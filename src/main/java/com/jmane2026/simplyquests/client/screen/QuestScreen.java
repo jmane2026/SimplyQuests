@@ -2151,10 +2151,20 @@ public class QuestScreen extends Screen {
         float visibleLength = distance - r1 - r2;
         float arrowSpacing = 8.0f; // This MUST match the modulo in renderQuestTree
 
+        // 4. PINCHED GRADIENT: Concentrates the color swap in the center 40% of the line
+        // This prevents the parent color from dominating the entire line visually.
+        float blendStart = r1 + (visibleLength * 0.3f);
+        float blendEnd = r1 + (visibleLength * 0.7f);
+
         // 4a. Draw the Static Gradient Line
-        // We use the efficient fillGradient for the base line. The colors stay anchored 
-        // to the nodes (color1 at parent, color2 at child) regardless of animation.
-        graphics.fillGradient(lineXStart, (int) r1, lineXEnd, (int) (distance - r2), color1, color2);
+        // Segment 1: Solid Parent Color
+        graphics.fill(lineXStart, (int) r1, lineXEnd, (int) blendStart, color1);
+
+        // Segment 2: Transition Zone (The actual gradient)
+        graphics.fillGradient(lineXStart, (int) blendStart, lineXEnd, (int) blendEnd, color1, color2);
+
+        // Segment 3: Solid Child Color
+        graphics.fill(lineXStart, (int) blendEnd, lineXEnd, (int) (distance - r2), color2);
 
         // 4b. Draw Flow Arrows ('>' symbols) along the visible line gap
         float lineStart = r1; 

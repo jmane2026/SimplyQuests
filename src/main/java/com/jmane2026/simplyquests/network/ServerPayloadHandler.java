@@ -31,6 +31,7 @@ public class ServerPayloadHandler {
             QuestServerEvents.getQuestManager().saveChapter(chId, payload.chapter());
             QuestServerEvents.getQuestManager().updateChapterInMemory(chId, payload.chapter());
             broadcastFullSync();
+            QuestServerEvents.refreshAllCaches(((ServerPlayer) context.player()).level().getServer());
         });
     }
 
@@ -40,6 +41,7 @@ public class ServerPayloadHandler {
         context.enqueueWork(() -> {
             QuestServerEvents.getQuestManager().saveGroups(payload.groups(), payload.rootChapters());
             broadcastFullSync();
+            QuestServerEvents.refreshAllCaches(((ServerPlayer) context.player()).level().getServer());
         });
     }
 

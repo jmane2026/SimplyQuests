@@ -13,6 +13,7 @@ import com.jmane2026.simplyquests.registry.QuestAttachmentRegistry;
 import com.jmane2026.simplyquests.util.QuestSyncHelper;
 import com.jmane2026.simplyquests.util.RewardGiver;
 import net.minecraft.core.Holder;
+import net.minecraft.core.registries.Registries;
 import net.minecraft.server.MinecraftServer;
 import net.minecraft.core.registries.BuiltInRegistries;
 import net.minecraft.resources.ResourceKey;
@@ -20,6 +21,7 @@ import net.minecraft.server.level.ServerPlayer;
 import net.minecraft.resources.Identifier;
 import net.minecraft.server.players.NameAndId;
 import net.minecraft.world.entity.player.Inventory;
+import net.minecraft.tags.TagKey;
 import net.minecraft.world.item.Item;
 import net.minecraft.world.item.ItemStack;
 import net.neoforged.neoforge.network.handling.IPayloadContext;
@@ -93,6 +95,16 @@ public class QuestServerEvents {
         PacketDistributor.sendToPlayer(player, new SyncOpStatusPayload(isOp, enabled));
     }
 
+    /**
+     * Rebuilds the item cache for all online players. 
+     * Crucial to call this after any quest tree structure changes (saves/renames).
+     */
+    public static void refreshAllCaches(MinecraftServer server) {
+        for (ServerPlayer player : server.getPlayerList().getPlayers()) {
+            rebuildActiveQuestCache(player);
+        }
+    }
+
     @SubscribeEvent
     public static void onPlayerLogout(PlayerEvent.PlayerLoggedOutEvent event) {
         // Memory Cleanup: Prevent the map from growing indefinitely
@@ -115,10 +127,19 @@ public class QuestServerEvents {
 
                 if (task == null || task.getType() != QuestTask.TaskType.ITEM || !task.isConsume()) return;
 
-                Identifier targetId = Identifier.tryParse(task.getTargetId());
-                if (targetId == null) return;
-                Item targetItem = BuiltInRegistries.ITEM.get(targetId).map(Holder::value).orElse(null);
-                if (targetItem == null) return;
+                String rawTarget = task.getTargetId();
+                java.util.function.Predicate<ItemStack> itemMatcher;
+
+                if (rawTarget.startsWith("#")) {
+                    TagKey<Item> tagKey = TagKey.create(Registries.ITEM, Identifier.parse(rawTarget.substring(1)));
+                    itemMatcher = stack -> stack.is(tagKey);
+                } else {
+                    Identifier targetId = Identifier.tryParse(rawTarget);
+                    if (targetId == null) return;
+                    Item targetItem = BuiltInRegistries.ITEM.get(targetId).map(Holder::value).orElse(null);
+                    if (targetItem == null) return;
+                    itemMatcher = stack -> stack.is(targetItem);
+                }
 
                 int current = progress.getTaskAmount(task.getId());
                 int needed = task.getRequiredAmount() - current;
@@ -126,7 +147,7 @@ public class QuestServerEvents {
 
                 // 1. Check the mouse cursor (Carried Stack)
                 ItemStack carried = player.containerMenu.getCarried();
-                if (!carried.isEmpty() && carried.is(targetItem)) {
+                if (!carried.isEmpty() && itemMatcher.test(carried)) {
                     int toTake = Math.min(carried.getCount(), needed - foundCount);
                     carried.shrink(toTake);
                     foundCount += toTake;
@@ -136,7 +157,7 @@ public class QuestServerEvents {
                 Inventory inv = player.getInventory();
                 for (int i = 0; i < inv.getContainerSize() && foundCount < needed; i++) {
                     ItemStack stack = inv.getItem(i);
-                    if (!stack.isEmpty() && stack.is(targetItem)) {
+                    if (!stack.isEmpty() && itemMatcher.test(stack)) {
                         int toTake = Math.min(stack.getCount(), needed - foundCount);
                         stack.shrink(toTake);
                         foundCount += toTake;
@@ -199,6 +220,10 @@ public class QuestServerEvents {
                     player.setData(QuestAttachmentRegistry.PLAYER_PROGRESS, progress); // FORCE NBT SAVE
                 }
                 syncAndCheckCompletions(player);
+                
+                // FIX: If this was a reset, immediately re-scan inventory so existing items are counted
+                if (!payload.complete()) processItemAcquisition(player, ItemStack.EMPTY);
+
             }
         });
     }
@@ -239,6 +264,9 @@ public class QuestServerEvents {
 
                 player.setData(QuestAttachmentRegistry.PLAYER_PROGRESS, progress);
                 syncAndCheckCompletions(player);
+                
+                // FIX: Immediately re-scan inventory after a group/chapter reset
+                processItemAcquisition(player, ItemStack.EMPTY);
             }
         });
     }
@@ -418,13 +446,22 @@ public class QuestServerEvents {
                 for (QuestTask task : quest.getTasks()) {
                     // Only auto-sync non-consuming ITEM tasks
                     if (task.getType() != QuestTask.TaskType.ITEM || task.isConsume()) continue;
+                    
+                    String rawTarget = task.getTargetId();
+                    int totalInInventory = 0;
 
-                    Identifier loc = Identifier.tryParse(task.getTargetId());
-                    if (loc == null) continue;
-                    Item targetItem = BuiltInRegistries.ITEM.get(loc).map(Holder::value).orElse(null);
-                    if (targetItem == null) continue;
-
-                    int totalInInventory = inventoryCounts.getOrDefault(targetItem, 0);
+                    if (rawTarget.startsWith("#")) {
+                        TagKey<Item> tagKey = TagKey.create(Registries.ITEM, Identifier.parse(rawTarget.substring(1)));
+                        for (Map.Entry<Item, Integer> entry : inventoryCounts.entrySet()) {
+                            if (BuiltInRegistries.ITEM.wrapAsHolder(entry.getKey()).is(tagKey)) {
+                                totalInInventory += entry.getValue();
+                            }
+                        }
+                    } else {
+                        Item targetItem = BuiltInRegistries.ITEM.get(Identifier.parse(rawTarget)).map(Holder::value).orElse(null);
+                        if (targetItem == null) continue;
+                        totalInInventory = inventoryCounts.getOrDefault(targetItem, 0);
+                    }
 
                     if (progress.getTaskAmount(task.getId()) != totalInInventory) {
                         progress.setTaskAmount(task.getId(), totalInInventory);
@@ -459,9 +496,11 @@ public class QuestServerEvents {
         // If any completions occurred, we MUST save the updated sets to the player's NBT
         if (!results.quests().isEmpty() || !results.chapters().isEmpty()) {
             player.setData(QuestAttachmentRegistry.PLAYER_PROGRESS, progress);
-            // FIX: Rebuild the cache because a completion might have unlocked new quests
-            rebuildActiveQuestCache(player);
         }
+
+        // FIX: Always rebuild the cache here. Resets (which have empty results) change eligibility 
+        // just as much as completions do.
+        rebuildActiveQuestCache(player);
 
         // 3. Efficient Global Sync: Tell the client exactly what our NBT looks like
         QuestSyncHelper.syncPlayerProgress(player);

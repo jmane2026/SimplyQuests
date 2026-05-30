@@ -11,10 +11,13 @@ import net.minecraft.client.Minecraft;
 import net.minecraft.client.gui.Font;
 import net.minecraft.client.gui.GuiGraphicsExtractor;
 import net.minecraft.client.gui.screens.inventory.InventoryScreen;
+import net.minecraft.core.Holder;
+import net.minecraft.core.HolderSet;
 import net.minecraft.core.registries.*;
 import net.minecraft.client.renderer.RenderPipelines;
 import net.minecraft.network.chat.Component;
 import net.minecraft.resources.Identifier;
+import net.minecraft.tags.TagKey;
 import net.minecraft.world.entity.*;
 import net.minecraft.world.item.Items;
 import net.minecraft.world.level.Level;
@@ -131,9 +134,16 @@ public class QuestEditorUI {
                 graphics.text(font, value, valueX, rowY + 2, valueColor);
             } else if (labels[i].equals("Icon")) {
                 drawQuestIcon(graphics, quest, valueX, rowY - 2, 16);
-                
-                // If useTaskIcon is true, display "Checkmark", otherwise show item name
-                String itemName = quest.isUseTaskIcon() ? "Checkmark" : new ItemStack(quest.getLogo()).getHoverName().getString();
+                // FIX: Dynamically determine the label for the Icon row
+                String itemName = "None";
+                if (quest.isUseTaskIcon()) {
+                    QuestTask provider = quest.getTasks().stream()
+                            .filter(t -> t.getIconStack().getItem() == quest.getLogo() || (t.getType() == QuestTask.TaskType.CHECKBOX && quest.getLogo() == Items.AIR))
+                            .findFirst().orElse(null);
+                    itemName = (provider != null) ? "Task: " + provider.getTargetDisplayName() : "Task Icon";
+                } else {
+                    itemName = new ItemStack(quest.getLogo()).getHoverName().getString();
+                }
                 graphics.text(this.font, itemName, valueX + 20, rowY + 2, QuestScreen.COL_TEXT);
                 drawButton(graphics, mouseX, mouseY, editBtnLeft, rowY, editBtnWidth, 14, "Change", QuestScreen.COL_BUTTON_BASE);
             } else if (labels[i].equals("Dependencies")) {
@@ -520,6 +530,13 @@ public class QuestEditorUI {
                     }
                 }
             }
+
+            // Add Tags to the results
+            BuiltInRegistries.ITEM.getTags()
+                    .map(tag -> "#" + tag.key().location().toString())
+                    .filter(tagId -> tagId.contains(q))
+                    .forEach(results::add);
+
         } else if (type == QuestTask.TaskType.KILL) {
             for (EntityType<?> et : BuiltInRegistries.ENTITY_TYPE) {
                 // Filter out non-living misc entities (boats, arrows, etc.)
@@ -765,7 +782,31 @@ public class QuestEditorUI {
             }
         } else if (task.getType() != QuestTask.TaskType.CHECKBOX) {
             // For Item, Biome, and Location - Render the item scaled and centered inside the circle
-            renderCenteredItem(graphics, task.getIconStack(), x, y, iconSize);
+            if (task.getTargetId().startsWith("#")) {
+                // TAG ICON LOGIC: Show the first valid item in the tag as the icon
+                try {
+                    Identifier loc = Identifier.parse(task.getTargetId().substring(1));
+                    TagKey<Item> tagKey = TagKey.create(Registries.ITEM, loc);
+
+                    // FIX: Use Stream filter/findFirst because getTags() returns a Stream, not an Iterable
+                    HolderSet.Named<Item> foundSet = BuiltInRegistries.ITEM.getTags()
+                            .filter(s -> s.key().equals(tagKey))
+                            .findFirst().orElse(null);
+
+                    if (foundSet != null && foundSet.size() > 0) {
+                        // CYCLE LOGIC: Use system time to pick an index that changes every 1000ms (1 second)
+                        int index = (int) ((Util.getMillis() / 1000) % foundSet.size());
+                        Item cyclingItem = foundSet.stream().skip(index).findFirst().map(Holder::value).orElse(Items.BARRIER);
+                        renderCenteredItem(graphics, new ItemStack(cyclingItem), x, y, iconSize);
+                    } else {
+                        renderCenteredItem(graphics, new ItemStack(Items.BARRIER), x, y, iconSize);
+                    }
+                } catch (Exception e) {
+                    renderCenteredItem(graphics, new ItemStack(Items.BARRIER), x, y, iconSize);
+                }
+            } else {
+                renderCenteredItem(graphics, task.getIconStack(), x, y, iconSize);
+            }
         } else {
             // For Checkbox - Always render the checkmark as the primary icon.
             // We use 0.55 padding to match the task node style.
@@ -774,9 +815,47 @@ public class QuestEditorUI {
     }
 
     public void drawQuestIcon(GuiGraphicsExtractor graphics, Quest quest, int x, int y, int size) {
-        // FIX: Only render the checkmark if the flag is set AND the logo is AIR (Checkbox tasks)
-        // Otherwise, render the item logo assigned from the task
-        if (quest.isUseTaskIcon() && quest.getLogo() == Items.AIR) {
+        // 1. If using task icon, identify the provider task
+        if (quest.isUseTaskIcon() && !quest.getTasks().isEmpty()) {
+            QuestTask provider = null;
+            for (QuestTask t : quest.getTasks()) {
+                if ((t.getType() == QuestTask.TaskType.CHECKBOX && quest.getLogo() == Items.AIR) ||
+                        (t.getIconStack().getItem() == quest.getLogo())) {
+                    provider = t;
+                    break;
+                }
+            }
+
+            // 2. Render the specific icon WITHOUT the task container (circle)
+            if (provider != null) {
+                if (provider.getTargetId().startsWith("#")) {
+                    // Handle Tag Cycling directly for the Quest Node
+                    try {
+                        Identifier loc = Identifier.parse(provider.getTargetId().substring(1));
+                        TagKey<Item> tagKey = TagKey.create(Registries.ITEM, loc);
+                        HolderSet.Named<Item> foundSet = BuiltInRegistries.ITEM.getTags()
+                                .filter(s -> s.key().equals(tagKey))
+                                .findFirst().orElse(null);
+
+                        if (foundSet != null && foundSet.size() > 0) {
+                            int index = (int) ((Util.getMillis() / 1000) % foundSet.size());
+                            Item cyclingItem = foundSet.stream().skip(index).findFirst().map(Holder::value).orElse(Items.BARRIER);
+                            graphics.item(new ItemStack(cyclingItem), x, y);
+                            return;
+                        }
+                    } catch (Exception ignored) {}
+                } else if (provider.getType() == QuestTask.TaskType.CHECKBOX) {
+                    drawCheckmark(graphics, x, y, size);
+                    return;
+                }
+                // Fallback for standard item tasks
+                graphics.item(new ItemStack(quest.getLogo()), x, y);
+                return;
+            }
+        }
+
+        // 3. Fallback: Manual icon or standard checkmark logic
+        if (quest.getLogo() == Items.AIR) {
             drawCheckmark(graphics, x, y, size);
         } else {
             graphics.item(new ItemStack(quest.getLogo()), x, y);

@@ -127,7 +127,13 @@ public class QuestTask {
 
     public ItemStack getIconStack() {
         try {
-            Identifier loc = Identifier.tryParse(this.targetId);
+            String raw = this.targetId;
+            // FIX: If it's a tag, strip the # before parsing the Identifier
+            if (raw.startsWith("#")) {
+                raw = raw.substring(1);
+            }
+
+            Identifier loc = Identifier.tryParse(raw);
             if (loc == null) return new ItemStack(Items.BARRIER);
 
             return switch (this.type) {
@@ -188,6 +194,17 @@ public class QuestTask {
     public String getTargetDisplayName() {
         try {
             if (this.targetId.isEmpty() || this.targetId.equals("minecraft:air")) return "None";
+
+            if (this.targetId.startsWith("#")) {
+                String path = targetId.substring(targetId.lastIndexOf(':') + 1);
+                path = path.replace('_', ' ').replace('/', ' ');
+                StringBuilder sb = new StringBuilder();
+                for (String word : path.split(" ")) {
+                    if (!word.isEmpty())
+                        sb.append(Character.toUpperCase(word.charAt(0))).append(word.substring(1).toLowerCase()).append(" ");
+                }
+                return sb.toString().trim();
+            }
 
             Identifier loc = Identifier.tryParse(this.targetId);
             if (loc == null) return this.targetId;
@@ -251,21 +268,29 @@ public class QuestTask {
         // Only process if it's an ITEM task and not already finished
         if (this.type != TaskType.ITEM || this.state == TaskState.COMPLETE) return 0;
 
-        Identifier loc = Identifier.tryParse(this.targetId);
-        if (loc == null) return 0;
+        // FIX: Implement Tag matching logic for automatic item additions
+        boolean matches;
+        if (this.targetId.startsWith("#")) {
+            try {
+                Identifier loc = Identifier.parse(this.targetId.substring(1));
+                var tagKey = net.minecraft.tags.TagKey.create(net.minecraft.core.registries.Registries.ITEM, loc);
+                matches = stack.is(tagKey);
+            } catch (Exception e) {
+                matches = false;
+            }
+        } else {
+            Identifier loc = Identifier.tryParse(this.targetId);
+            matches = loc != null && BuiltInRegistries.ITEM.getKey(stack.getItem()).equals(loc);
+        }
 
-        // Robust Item Matching: Compare the registry name of the stack's item directly
-        // This avoids Optional/Holder resolution issues on the server thread.
-        Identifier stackId = BuiltInRegistries.ITEM.getKey(stack.getItem());
-
-        if (stackId != null && stackId.equals(loc)) {
+        if (matches) {
             int needed = this.requiredAmount - this.currentAmount;
             int toAdd = Math.min(stack.getCount(), needed);
 
             if (toAdd > 0) {
                 this.currentAmount += toAdd;
                 
-                // Transition state from INCOMPLETE to PARTIAL or COMPLETE
+                // Transition state
                 this.state = (this.currentAmount >= this.requiredAmount) ? TaskState.COMPLETE : TaskState.PARTIAL;
 
                 // Handle physical item removal if specified in the editor
