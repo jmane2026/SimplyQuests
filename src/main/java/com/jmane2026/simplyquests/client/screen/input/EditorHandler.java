@@ -233,6 +233,15 @@ public class EditorHandler {
             return true;
         }
 
+        // 3. Add Choice Button
+        if (QuestEditorUI.isMouseOver(mouseX, mouseY, px + 15, py + winH - 20, 60, 14)) {
+            // Create a sub-reward based on current settings
+            QuestReward choice = new QuestReward(reward.getId() + "/c" + reward.getSubRewards().size(), 
+                reward.getType(), reward.getItem(), reward.getCount(), reward.getCommand(), new java.util.ArrayList<>());
+            reward.getSubRewards().add(choice);
+            QuestScreen.playClickSound(); return true;
+        }
+
         String field = ui.getFieldAt(mouseY, py);
         if (field != null && QuestEditorUI.isMouseOver(mouseX, mouseY, px + 235, ui.getRowY(field, py), 55, 18)) {
             ui.closePicker();

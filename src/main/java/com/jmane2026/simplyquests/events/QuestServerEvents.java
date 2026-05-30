@@ -24,6 +24,7 @@ import net.minecraft.world.entity.player.Inventory;
 import net.minecraft.tags.TagKey;
 import net.minecraft.world.item.Item;
 import net.minecraft.world.item.ItemStack;
+import net.minecraft.world.item.Items;
 import net.neoforged.neoforge.network.handling.IPayloadContext;
 import net.neoforged.bus.api.SubscribeEvent;
 import net.neoforged.neoforge.event.AddServerReloadListenersEvent;
@@ -485,7 +486,36 @@ public class QuestServerEvents {
 
         // 1. Send Toasts for Quests
         for (Quest q : results.quests()) {
-            PacketDistributor.sendToPlayer(player, new QuestCompletedPayload(q.getTitle(), new ItemStack(q.getLogo())));
+            ItemStack toastIcon = ItemStack.EMPTY;
+
+            // FIX: If "Use Task Icon" is enabled, we MUST resolve the task's icon first,
+            // ignoring any manual icon that might be saved in the quest's logo field.
+            if (q.isUseTaskIcon() && !q.getTasks().isEmpty()) {
+                QuestTask firstTask = q.getTasks().get(0);
+                if (firstTask.getTargetId().startsWith("#")) {
+                    try {
+                        Identifier loc = Identifier.parse(firstTask.getTargetId().substring(1));
+                        TagKey<Item> tagKey = TagKey.create(Registries.ITEM, loc);
+                        // Pick the first item in the tag as the representative toast icon
+                        toastIcon = BuiltInRegistries.ITEM.getTags()
+                                .filter(s -> s.key().equals(tagKey))
+                                .findFirst()
+                                .flatMap(s -> s.stream().findFirst())
+                                .map(h -> new ItemStack(h.value()))
+                                .orElse(new ItemStack(Items.BOOK));
+                    } catch (Exception ignored) {}
+                } else {
+                    toastIcon = firstTask.getIconStack();
+                }
+            } else {
+                // If not using task icon, use the manually assigned logo
+                toastIcon = new ItemStack(q.getLogo());
+            }
+
+            // Final check: If the icon is still empty or a barrier (failed parse), use a Book as a fallback
+            if (toastIcon.isEmpty() || toastIcon.is(Items.BARRIER)) toastIcon = new ItemStack(Items.BOOK);
+
+            PacketDistributor.sendToPlayer(player, new QuestCompletedPayload(q.getTitle(), toastIcon));
         }
 
         // 2. Send Toasts for Chapters
@@ -523,17 +553,42 @@ public class QuestServerEvents {
             if (context.player() instanceof ServerPlayer player) {
                 PlayerQuestProgress progress = player.getData(QuestAttachmentRegistry.PLAYER_PROGRESS);
                 
-                // Find the reward and its parent quest
+                // We need to find the reward and determine if it's a top-level reward or a sub-reward choice
                 for (Quest quest : QUEST_MANAGER.getAllQuests()) {
                     for (QuestReward reward : quest.getRewards()) {
+                        QuestReward targetToGive = null;
+                        QuestReward bundleToClaim = null;
+
+                        // 1. Check if the ID matches the top-level reward
                         if (reward.getId().equals(payload.rewardId())) {
-                            // Check if quest is complete and reward is not yet claimed
-                            if (progress.isQuestComplete(quest.getId()) && !progress.isRewardClaimed(reward.getId())) {
-                                // Grant specific reward
-                                RewardGiver.giveReward(player, reward);
-                                
-                                // Mark specific reward ID as claimed in NBT
-                                progress.claimReward(reward.getId());
+                            targetToGive = reward;
+                        } else {
+                            // 2. Check if the ID matches a choice inside this reward bundle
+                            for (QuestReward sub : reward.getSubRewards()) {
+                                if (sub.getId().equals(payload.rewardId())) {
+                                    targetToGive = sub;
+                                    bundleToClaim = reward; // If a sub-reward is picked, the parent bundle is finished
+                                    break;
+                                }
+                            }
+                        }
+
+                        if (targetToGive != null) {
+                            // Validation: Check if quest is complete and the reward (or its parent bundle) isn't claimed yet
+                            boolean alreadyClaimed = bundleToClaim != null ? progress.isRewardClaimed(bundleToClaim.getId()) : progress.isRewardClaimed(targetToGive.getId());
+
+                            if (progress.isQuestComplete(quest.getId()) && !alreadyClaimed) {
+                                // 3. Grant the reward (Item, XP, or Command)
+                                RewardGiver.giveReward(player, targetToGive);
+
+                                // 4. Mark IDs as claimed in NBT:
+                                // If a choice was made, mark the parent bundle as claimed.
+                                // Otherwise, mark the reward itself as claimed.
+                                if (bundleToClaim != null) {
+                                    progress.claimReward(bundleToClaim.getId());
+                                } else {
+                                    progress.claimReward(targetToGive.getId());
+                                }
 
                                 // --- REPEATABLE RESET LOGIC ---
                                 if (quest.isRepeatable()) {
@@ -554,7 +609,7 @@ public class QuestServerEvents {
                                 player.setData(QuestAttachmentRegistry.PLAYER_PROGRESS, progress);
                                 syncAndCheckCompletions(player);
                             }
-                            return; // Reward found and handled
+                            return;
                         }
                     }
                 }

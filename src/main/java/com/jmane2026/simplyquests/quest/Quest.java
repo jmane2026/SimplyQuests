@@ -181,7 +181,7 @@ public class Quest {
         }
         this.rewards = new ArrayList<>();
         for (QuestReward reward : other.rewards) {
-            this.rewards.add(new QuestReward(reward.getId(), reward.getType(), reward.getItem(), reward.getCount(), reward.getCommand()));
+            this.rewards.add(new QuestReward(reward));
         }
     }
 

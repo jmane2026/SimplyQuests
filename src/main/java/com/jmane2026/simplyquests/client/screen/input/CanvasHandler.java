@@ -65,7 +65,7 @@ public class CanvasHandler {
             }
             int rPlusX = (b.x + (3 * b.width / 4)) + (Minecraft.getInstance().font.width("Rewards") / 2) + 8;
             if (mouseX >= rPlusX - 2 && mouseX <= rPlusX + 10) {
-                screen.rewardToModify = new QuestReward(QuestReward.generateRewardId(screen.selectedQuest.getId(), "item", screen.selectedQuest.getRewards()), QuestReward.RewardType.ITEM, net.minecraft.world.item.Items.AIR, 1, "");
+                screen.rewardToModify = new QuestReward(QuestReward.generateRewardId(screen.selectedQuest.getId(), "item", screen.selectedQuest.getRewards()), QuestReward.RewardType.ITEM, net.minecraft.world.item.Items.AIR, 1, "", new java.util.ArrayList<>());
                 screen.isRewardEditorOpen = true; screen.editorUI.isRewardModeOpen = true; QuestScreen.playClickSound(); return true;
             }
         }
@@ -94,11 +94,18 @@ public class CanvasHandler {
             int ix = rX + (i * 24);
             if (mouseX >= ix && mouseX <= ix + 20 && mouseY >= b.y + 45 && mouseY <= b.y + 65) {
                 QuestReward r = screen.selectedQuest.getRewards().get(rStart + i);
+                boolean isBundle = !r.getSubRewards().isEmpty();
+
                 if (button == 0) {
                     boolean questDone = SimplyQuestsClientPacketHandler.CLIENT_COMPLETED_QUESTS.contains(screen.selectedQuest.getId());
-                    boolean claimed = SimplyQuestsClientPacketHandler.CLIENT_CLAIMED_REWARDS.contains(r.getId());
-                    if (questDone && !claimed) {
-                        ClientPacketDistributor.sendToServer(new ClaimRewardPayload(r.getId()));
+                    if (questDone) {
+                        if (isBundle) {
+                            screen.activeChoiceBundle = r;
+                            screen.selectedChoice = null;
+                            screen.isChoiceModalOpen = true;
+                        } else if (!SimplyQuestsClientPacketHandler.CLIENT_CLAIMED_REWARDS.contains(r.getId())) {
+                            ClientPacketDistributor.sendToServer(new ClaimRewardPayload(r.getId()));
+                        }
                     }
                 }
                 else if (button == 1 && QuestGlobalState.isEditModeEnabled) screen.openRewardContextMenu(mouseX, mouseY, r);

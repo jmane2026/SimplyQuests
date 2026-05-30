@@ -108,7 +108,7 @@ public class QuestEditorUI {
         // Spans from startY to the button area at the bottom
         int padding = 1;
         int lineTop = panelY;
-        int lineBottom = panelY + panelHeight - 25; // Adjusted to stop before bottom buttons
+        int lineBottom = panelY + panelHeight - 1; // Extend to the bottom window border
         graphics.verticalLine(dividerX, lineTop, lineBottom, QuestScreen.COL_PANEL_DIVIDER);
 
         // --- 3. RENDER ROWS ---
@@ -264,7 +264,8 @@ public class QuestEditorUI {
                     graphics.pose().pushMatrix();
                     graphics.pose().scale(scale, scale);
 
-                    graphics.item(new ItemStack(q.getLogo()), (int)((b.x() + 4) / scale), iconY);
+                    // FIX: Use drawQuestIcon helper to support cycling tag icons in the dependency list
+                    drawQuestIcon(graphics, q, (int)((b.x() + 4) / scale), iconY, 16);
                     // Centered text vertical alignment (rowY + 3)
                     graphics.text(font, q.getTitle(), (int)((b.x() + 18) / scale), (int)((rowY + 3) / scale), QuestScreen.COL_TEXT);
 
@@ -408,9 +409,10 @@ public class QuestEditorUI {
         graphics.text(font, Component.literal(headerText), leftMargin, panelY + 10, QuestScreen.COL_TEXT);
 
         // Draw the derived task icon in the header
-        drawTaskIcon(graphics, task, task.getCurrentAmount(), panelX + panelWidth - 35, panelY + 4, mouseX, mouseY, 16);
+        drawTaskIcon(graphics, task, task.getCurrentAmount(), QuestScreen.COL_UI_BG, panelX + panelWidth - 35, panelY + 4, mouseX, mouseY, 16);
 
         graphics.horizontalLine(panelX + 5, panelX + panelWidth - 5, panelY + 22, QuestScreen.COL_PANEL_DIVIDER);
+        graphics.verticalLine(dividerX, panelY, panelY + panelHeight - 1, QuestScreen.COL_PANEL_DIVIDER);
 
         String pendingTaskOverlay = null;
         int overlayX = 0;
@@ -447,7 +449,7 @@ public class QuestEditorUI {
 
             // If this is the Target row, render the icon preview to the left of the text
             if (field.equals("Target")) {
-                drawTaskIcon(graphics, task, task.getCurrentAmount(), valueX, rowY - 2, mouseX, mouseY, 16);
+                drawTaskIcon(graphics, task, task.getCurrentAmount(), QuestScreen.COL_UI_BG, valueX, rowY - 2, mouseX, mouseY, 16);
             }
 
             if ((isNumericRow && isQuantityOpen) || (labels[i].equals("X") && isXOpen) || (labels[i].equals("Y") && isYOpen) || (labels[i].equals("Z") && isZOpen)) {
@@ -577,8 +579,9 @@ public class QuestEditorUI {
 
         String headerText = "Reward Editor";
         graphics.text(font, Component.literal(headerText), leftMargin, panelY + 10, QuestScreen.COL_TEXT);
-        drawRewardIcon(graphics, reward, QuestScreen.COL_STATE_COMPLETED, panelX + panelWidth - 35, panelY + 4, 16, false);
+        drawRewardIcon(graphics, reward, QuestScreen.COL_STATE_COMPLETED, QuestScreen.COL_UI_BG, panelX + panelWidth - 35, panelY + 4, 16, false);
         graphics.horizontalLine(panelX + 5, panelX + panelWidth - 5, panelY + 22, QuestScreen.COL_PANEL_DIVIDER);
+        graphics.verticalLine(dividerX, panelY, panelY + panelHeight - 1, QuestScreen.COL_PANEL_DIVIDER);
 
         String[] labels = reward.getType() == QuestReward.RewardType.ITEM ? new String[]{"Type", "Target", "Quantity"} :
                 (reward.getType() == QuestReward.RewardType.XP ? new String[]{"Type", "Quantity"} : new String[]{"Type", "Command"});
@@ -612,6 +615,13 @@ public class QuestEditorUI {
 
         // Footer Buttons
         int btnY = panelY + panelHeight - 20;
+
+        // Add Choice Button (Bottom Left)
+        drawButton(graphics, mouseX, mouseY, panelX + 15, btnY, 60, 14, "Add Choice", QuestScreen.COL_BUTTON_BASE);
+        if (!reward.getSubRewards().isEmpty()) {
+            graphics.text(font, "Choices: " + reward.getSubRewards().size(), panelX + 80, btnY + 3, QuestScreen.COL_TEXT_GOLD);
+        }
+
         drawButton(graphics, mouseX, mouseY, editBtnLeft - 50, btnY, 45, 14, "Cancel", QuestScreen.COL_BUTTON_BASE);
         drawButton(graphics, mouseX, mouseY, editBtnLeft, btnY, 45, 14, "Save", QuestScreen.COL_BUTTON_BASE);
 
@@ -661,14 +671,16 @@ public class QuestEditorUI {
                         int iy = (b.y() + 16 + 5) + (i / columns) * cellSize - (int) scrollOffset;
                         int slotW = (taskType == QuestTask.TaskType.BIOME) ? b.w() - 10 : cellSize - 2;
 
-                        if (mouseX > ix && mouseX < ix + slotW && mouseY > iy && mouseY < iy + cellSize - 2) {
+                        boolean isHovered = mouseX > ix && mouseX < ix + slotW && mouseY > iy && mouseY < iy + cellSize - 2;
+                        int innerColor = isHovered ? QuestScreen.COL_PANEL_HEADER : QuestScreen.COL_UI_BG;
+                        if (isHovered) {
                             graphics.fill(ix - 1, iy - 1, ix + slotW + 1, iy + cellSize - 1, QuestScreen.COL_HOVER_MENU);
                             hoveredTarget = targetId;
                         }
 
                         if (iy >= b.y() + b.barHeight() && iy < b.y() + b.h() - 1) {
                             QuestTask temp = new QuestTask("", taskType, targetId, "", 1, 0, false, false, false, QuestTask.TaskState.INCOMPLETE, 0, 0, 0);
-                            drawTaskIcon(graphics, temp, 0, ix, iy, mouseX, mouseY, cellSize - 2);
+                            drawTaskIcon(graphics, temp, 0, innerColor, ix, iy, mouseX, mouseY, cellSize - 2);
                             if (taskType == QuestTask.TaskType.BIOME) {
                                 graphics.text(font, temp.getTargetDisplayName(), ix + 20, iy + 4, QuestScreen.COL_TEXT);
                             }
@@ -684,8 +696,8 @@ public class QuestEditorUI {
         }
     }
 
-    public void drawRewardIcon(GuiGraphicsExtractor graphics, QuestReward reward, int circleColor, int x, int y, int size, boolean isClaimable) {
-        QuestShapeRenderer.render(QuestShape.CIRCLE, graphics, x, y, size, circleColor, QuestScreen.COL_UI_BG);
+    public void drawRewardIcon(GuiGraphicsExtractor graphics, QuestReward reward, int circleColor, int innerColor, int x, int y, int size, boolean isClaimable) {
+        QuestShapeRenderer.render(QuestShape.CIRCLE, graphics, x, y, size, circleColor, innerColor);
         ItemStack stack = switch (reward.getType()) {
             case ITEM -> new ItemStack(reward.getItem(), reward.getCount());
             case XP -> new ItemStack(Items.EXPERIENCE_BOTTLE);
@@ -701,7 +713,7 @@ public class QuestEditorUI {
         }
     }
 
-    public void drawTaskIcon(GuiGraphicsExtractor graphics, QuestTask task, int currentAmount, int x, int y, int mouseX, int mouseY, int size) {
+    public void drawTaskIcon(GuiGraphicsExtractor graphics, QuestTask task, int currentAmount, int innerColor, int x, int y, int mouseX, int mouseY, int size) {
         // 1. Derive the state locally from the synced data
         boolean isComplete = currentAmount >= task.getRequiredAmount();
         boolean isStarted = currentAmount > 0;
@@ -710,7 +722,7 @@ public class QuestEditorUI {
                 (isStarted ? QuestScreen.COL_STATE_PARTIAL : QuestScreen.COL_STATE_AVAILABLE);
         int iconSize = size;
         // 1. Draw the background circle for ALL task types
-        QuestShapeRenderer.render(QuestShape.CIRCLE, graphics, x, y, iconSize, circleColor, QuestScreen.COL_UI_BG);
+        QuestShapeRenderer.render(QuestShape.CIRCLE, graphics, x, y, iconSize, circleColor, innerColor);
 
         if (task.getType() == QuestTask.TaskType.KILL) {
             Identifier loc = Identifier.tryParse(task.getTargetId());
@@ -819,8 +831,13 @@ public class QuestEditorUI {
         if (quest.isUseTaskIcon() && !quest.getTasks().isEmpty()) {
             QuestTask provider = null;
             for (QuestTask t : quest.getTasks()) {
-                if ((t.getType() == QuestTask.TaskType.CHECKBOX && quest.getLogo() == Items.AIR) ||
-                        (t.getIconStack().getItem() == quest.getLogo())) {
+                // FIX: Use a state-agnostic check to find the provider.
+                // We prioritize tasks that are Tags, then Checkboxes, then specific Items.
+                if (t.getTargetId().startsWith("#")) {
+                    provider = t;
+                    break;
+                } else if ((t.getType() == QuestTask.TaskType.CHECKBOX && quest.getLogo() == Items.AIR) ||
+                           (t.getIconStack().getItem() == quest.getLogo())) {
                     provider = t;
                     break;
                 }

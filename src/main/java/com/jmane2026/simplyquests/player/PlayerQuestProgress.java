@@ -18,7 +18,7 @@ public class PlayerQuestProgress {
             Codec.STRING.listOf().optionalFieldOf("claimed", List.of())
                     .xmap(HashSet::new, List::copyOf).forGetter(p -> p.claimedRewards),
             Codec.unboundedMap(Codec.STRING, Codec.INT).optionalFieldOf("taskProgress", Map.of())
-                    .forGetter(p -> p.taskProgress),
+                    .forGetter(p -> Map.copyOf(p.taskProgress)),
             Codec.STRING.listOf().optionalFieldOf("completedChapters", List.of())
                     .xmap(HashSet::new, List::copyOf).forGetter(p -> p.completedChapters),
             Codec.BOOL.optionalFieldOf("editMode", false).forGetter(p -> p.editMode)
@@ -74,19 +74,23 @@ public class PlayerQuestProgress {
     public void resetChapter(String name) { completedChapters.remove(name); }
 
     public HashSet<String> getCompletedQuests() {
-        return this.completedQuests;
+        // Return a copy to prevent ConcurrentModificationException during network sync
+        return new HashSet<>(this.completedQuests);
     }
 
     public HashSet<String> getClaimedRewards() {
-        return this.claimedRewards;
+        // Return a copy to prevent ConcurrentModificationException during network sync
+        return new HashSet<>(this.claimedRewards);
     }
 
     public Map<String, Integer> getTaskProgressMap() {
-        return this.taskProgress;
+        // Return a copy to prevent ConcurrentModificationException during network sync
+        return new HashMap<>(this.taskProgress);
     }
 
     public HashSet<String> getCompletedChapters() {
-        return completedChapters;
+        // Return a copy to prevent ConcurrentModificationException during network sync
+        return new HashSet<>(this.completedChapters);
     }
 
     public boolean isEditMode() { return editMode; }

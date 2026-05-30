@@ -108,9 +108,10 @@ public class PickerHandler {
                         screen.rewardToModify = new QuestReward(
                                 screen.rewardToModify.getId(),
                                 newType,
-                                net.minecraft.world.item.Items.AIR,
+                                Items.AIR,
                                 1,
-                                ""
+                                "",
+                                new java.util.ArrayList<>()
                         );
                     }
                     ui.isTypePickerOpen = false;
@@ -151,7 +152,10 @@ public class PickerHandler {
                 if (itemIdx >= 0 && itemIdx < icons.size()) {
                     Item s = icons.get(itemIdx);
                     if (screen.isEditingChapterIcon) { screen.sidebarTargetChapter.setIconStack(new ItemStack(s)); screen.saveChapterData(screen.sidebarTargetChapter.getName()); }
-                    else if (screen.rewardToModify != null) screen.rewardToModify = new QuestReward(screen.rewardToModify.getId(), screen.rewardToModify.getType(), s, screen.rewardToModify.getCount(), screen.rewardToModify.getCommand());
+                    else if (screen.rewardToModify != null) {
+                        // Use setter to preserve subRewards (choices) inside the bundle
+                        screen.rewardToModify.setItem(s);
+                    }
                     else if (screen.questToModify != null) { screen.questToModify.setLogo(s); screen.questToModify.setUseTaskIcon(false); }
                     ui.closePicker(); screen.isEditingChapterIcon = false;
                 }

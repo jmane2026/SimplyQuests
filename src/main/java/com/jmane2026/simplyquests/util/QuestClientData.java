@@ -6,12 +6,16 @@ import net.neoforged.fml.loading.FMLPaths;
 import org.apache.commons.io.FileUtils;
 
 import java.io.File;
+import java.util.HashMap;
+import java.util.Map;
 import java.nio.charset.StandardCharsets;
 
 public class QuestClientData {
     private static final Gson GSON = new GsonBuilder().setPrettyPrinting().create();
     private static final File FILE = FMLPaths.GAMEDIR.get().resolve("simplyquests_local.json").toFile();
     private static Data data = new Data();
+
+    public record ViewState(double x, double y, double zoom) {}
 
     static {
         load();
@@ -66,9 +70,26 @@ public class QuestClientData {
         }
     }
 
+    public static ViewState getChapterViewState(String chapterId) {
+        return data.chapterViews.get(chapterId);
+    }
+
+    public static void saveChapterViewState(String chapterId, double x, double y, double zoom) {
+        ViewState newState = new ViewState(x, y, zoom);
+        ViewState oldState = data.chapterViews.get(chapterId);
+
+        // Only trigger a disk save if the view actually moved/changed
+        if (oldState == null || oldState.x != x || oldState.y != y || oldState.zoom != zoom) {
+            data.chapterViews.put(chapterId, newState);
+            save();
+        }
+    }
+
     private static class Data {
         String lastChapter = "";
         double zoom = 1.0;
         boolean editMode = false;
+        // Key: Chapter sanitized ID, Value: The specific camera position for that chapter
+        Map<String, ViewState> chapterViews = new HashMap<>();
     }
 }

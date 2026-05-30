@@ -3,11 +3,13 @@ package com.jmane2026.simplyquests.client;
 import com.jmane2026.simplyquests.config.SimplyQuestsConfig;
 import com.jmane2026.simplyquests.SimplyQuests;
 import com.jmane2026.simplyquests.client.screen.QuestScreen;
+import com.jmane2026.simplyquests.client.screen.QuestEditorUI;
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.gui.GuiGraphicsExtractor;
 import net.minecraft.client.gui.components.Button;
 import net.minecraft.client.gui.components.Tooltip;
 import net.minecraft.client.input.MouseButtonEvent;
+import net.minecraft.client.renderer.RenderPipelines;
 import org.lwjgl.glfw.GLFW;
 import net.minecraft.client.gui.screens.inventory.InventoryScreen;
 import net.minecraft.network.chat.Component;
@@ -118,6 +120,12 @@ public class InventoryQuestButtonHandler {
             if (isHovered()) {
                 // Add a subtle highlight when hovering
                 graphics.fill(getX(), getY(), getX() + 16, getY() + 16, 0x40FFFFFF);
+            }
+
+            // Draw the claim badge if ANY reward is available (including choices)
+            if (QuestScreen.hasAnyUnclaimedRewards()) {
+                graphics.blit(RenderPipelines.GUI_TEXTURED, QuestEditorUI.CLAIM_ICON,
+                        getX() + 10, getY() - 2, 0.0f, 0.0f, 8, 8, 8, 8);
             }
         }
     }

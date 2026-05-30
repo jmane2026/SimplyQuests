@@ -30,6 +30,10 @@ public class SimplyQuestsConfig {
     public static final ModConfigSpec.ConfigValue<Integer> GRID;
     public static final ModConfigSpec.ConfigValue<Integer> DIM;
     public static final ModConfigSpec.ConfigValue<Integer> SLIDER_TRACK;
+
+    public static final ModConfigSpec.ConfigValue<Integer> GHOST_BORDER;
+    public static final ModConfigSpec.ConfigValue<Integer> GHOST_FILL;
+
     public static final ModConfigSpec.DoubleValue GRID_SIZE;
 
     // Button Position Configs
@@ -63,6 +67,9 @@ public class SimplyQuestsConfig {
         GRID = BUILDER.comment("Canvas Grid Line Color (ARGB)").define("grid", 0x0DFFFFFF);
         DIM = BUILDER.comment("Modal Background Dimming Color (ARGB)").define("dim", 0xAA000000);
         SLIDER_TRACK = BUILDER.comment("Slider Track Background Color (ARGB)").define("slider_track", 0xFFAAAAAA);
+        GHOST_BORDER = BUILDER.comment("Color of the ghost node border during movement").define("ghostBorder", 0x80505050);
+        GHOST_FILL = BUILDER.comment("Color of the ghost node background during movement").define("ghostFill", 0x40FFFFFF);
+
         BUILDER.pop();
 
         BUILDER.push("Button Position");
