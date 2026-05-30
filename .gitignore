@@ -1,0 +1,32 @@
+# Gradle files
+.gradle/
+build/
+
+# IDE files
+.idea/
+*.iml
+.vscode/
+bin/
+out/
+
+# Minecraft Run Directory (Worlds, Configs, Logs)
+# We definitely don't want to upload your test worlds or local logs
+run/
+
+# OS specific
+.DS_Store
+Thumbs.db
+
+# Credentials/Local Settings
+local.properties
+
+# Forge/NeoForge Specifics
+*.log
+*.user
+.gradle-test-kit/
+
+# Quests Cache (Local to your machine)
+simplyquests_cache/
+
+# Output Jars
+*.jar
