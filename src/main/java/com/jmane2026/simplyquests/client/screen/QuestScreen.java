@@ -334,7 +334,12 @@ public class QuestScreen extends Screen {
             for (QuestGroup gDef : groupDefinitions) {
                 String displayName = (gDef.getTitle() != null && !gDef.getTitle().isEmpty()) ? gDef.getTitle() : gDef.getName();
                 SidebarGroup g = new SidebarGroup(displayName, gDef.getColor());
-                if (g.isExpanded() != gDef.isExpanded()) g.toggleExpanded(); // Sync with saved state
+                
+                // LOCAL OVERRIDE: Prioritize local expansion preferences over server defaults
+                Boolean localExpanded = QuestClientData.isGroupExpanded(gDef.getName());
+                boolean targetExpanded = (localExpanded != null) ? localExpanded : gDef.isExpanded();
+                if (g.isExpanded() != targetExpanded) g.toggleExpanded();
+                
                 groupMap.put(gDef.getName(), g);
                 rootOrderMap.put(g, gDef.getOrder());
             }
@@ -355,14 +360,6 @@ public class QuestScreen extends Screen {
                 sideChapter.setOffsetX(chapter.getOffsetX()); // FIX: Restore camera X
                 sideChapter.setOffsetY(chapter.getOffsetY()); // FIX: Restore camera Y
                 sideChapter.setZoom(chapter.getZoom());
-
-                // LOCAL OVERRIDE: Check if the player has a local preference for this chapter's view
-                QuestClientData.ViewState localView = QuestClientData.getChapterViewState(chapter.getName());
-                if (localView != null) {
-                    sideChapter.setOffsetX(localView.x());
-                    sideChapter.setOffsetY(localView.y());
-                    sideChapter.setZoom(localView.zoom());
-                }
 
                 // If group is empty or "Ungrouped", add directly to root, otherwise add to group
                 if (groupName == null || groupName.isEmpty() || groupName.equals("Ungrouped")) {
@@ -461,10 +458,17 @@ public class QuestScreen extends Screen {
                 this.offsetY = liveY;
                 this.zoom = liveZoom;
             } else {
-                // Different chapter or first load: use the saved values
-                this.offsetX = this.selectedChapter.getOffsetX();
-                this.offsetY = this.selectedChapter.getOffsetY();
-                this.zoom = this.selectedChapter.getZoom();
+                // FIX: Prioritize Local View Preferences over Server Master Defaults
+                QuestClientData.ViewState localView = QuestClientData.getChapterViewState(this.selectedChapter.getId());
+                if (localView != null) {
+                    this.offsetX = localView.x();
+                    this.offsetY = localView.y();
+                    this.zoom = localView.zoom();
+                } else {
+                    this.offsetX = this.selectedChapter.getOffsetX();
+                    this.offsetY = this.selectedChapter.getOffsetY();
+                    this.zoom = this.selectedChapter.getZoom();
+                }
             }
         } else {
             this.offsetX = 0;
@@ -639,12 +643,6 @@ public class QuestScreen extends Screen {
             this.offsetX -= (deltaX / guiScale) / this.zoom;
             this.offsetY -= (deltaY / guiScale) / this.zoom;
 
-            if (this.selectedChapter != null) {
-                this.selectedChapter.setOffsetX(this.offsetX);
-                this.selectedChapter.setOffsetY(this.offsetY);
-                this.selectedChapter.setZoom(this.zoom);
-            }
-
             this.lastMouseX = currentX;
             this.lastMouseY = currentY;
         } else {
@@ -675,14 +673,17 @@ public class QuestScreen extends Screen {
         drawGrid(graphics);
 
         // 5. Render your quest tree nodes onto the grid
-        renderQuestTree(graphics, mouseX, mouseY);
+        renderQuestTree(graphics, mouseX, mouseY, partialTick);
 
         if (this.movingCanvasText != null) {
             double worldMouseX = this.offsetX + ((mouseX - absoluteCenterX) / this.zoom);
             double worldMouseY = this.offsetY + ((mouseY - absoluteCenterY) / this.zoom);
 
-            double snappedX = Math.round(worldMouseX / GRID_SNAP) * GRID_SNAP;
-            double snappedY = Math.round(worldMouseY / GRID_SNAP) * GRID_SNAP;
+            // FIX: Apply drag offsets to anchor the move to the initiation point
+            double targetX = worldMouseX - this.dragOffsetX;
+            double targetY = worldMouseY - this.dragOffsetY;
+            double snappedX = Math.round(targetX / GRID_SNAP) * GRID_SNAP;
+            double snappedY = Math.round(targetY / GRID_SNAP) * GRID_SNAP;
 
             graphics.pose().pushMatrix();
             graphics.pose().translate((float) snappedX, (float) snappedY);
@@ -1261,7 +1262,7 @@ public class QuestScreen extends Screen {
                 }
             }
             // FIX: Hide tooltips if input is blocked by a window or picker
-            if (hoveredQuest != null && !isInputBlocked() && this.selectedQuest == null && !isPickerOpen()) {
+            if (hoveredQuest != null && !isInputBlocked() && this.selectedQuest == null && !editorUI.isPickerOpen()) {
                 // Build detailed path: Group > Chapter > Quest
                 String tooltipText = hoveredQuest.getTitle();
 
@@ -1444,8 +1445,13 @@ public class QuestScreen extends Screen {
         }
     }
 
-    private void renderQuestTree(GuiGraphicsExtractor graphics, int mouseX, int mouseY) {
+    private void renderQuestTree(GuiGraphicsExtractor graphics, int mouseX, int mouseY, float partialTick) {
         if (this.selectedChapter == null) return;
+
+        // 0. Calculate GLOBAL animation phase for high-precision smoothness
+        // We do this at the top so it is accessible to all rendering passes
+        float globalAnimTime = (float) ((System.nanoTime() / 1_000_000.0) % 10000.0) + partialTick;
+        float globalArrowPhase = (globalAnimTime * 0.015f) % 8.0f;
 
         // PASS 0: BLOCK RENDERING IF EDITOR OPEN
         String activeChapterId = this.selectedChapter.getId();
@@ -1524,16 +1530,14 @@ public class QuestScreen extends Screen {
                     float r1 = dependency.getSize() * 0.25f;
                     float r2 = quest.getSize() * 0.25f;
 
-                    // ANIMATION: Calculate scroll phase if either end of the line is hovered.
+                    // Calculate scroll phase based on the global high-precision timer
                     float arrowPhase = 0;
                     boolean inputBlocked = isInputBlocked();
                     boolean isParentHovered = !inputBlocked && isMouseOverNode(mouseX, mouseY, dependency);
                     boolean isChildHovered = !inputBlocked && isMouseOverNode(mouseX, mouseY, quest);
 
                     if (isParentHovered || isChildHovered || dependency == this.movingQuest || quest == this.movingQuest) {
-                        // FIX: Use a modulo that matches the segment spacing (8.0f) in drawVectorLine
-                        // This ensures the loop is mathematically seamless with no "jumping".
-                        arrowPhase = (Util.getMillis() * 0.015f) % 8.0f; 
+                        arrowPhase = globalArrowPhase;
                     }
                     
                     // Increased thickness to 4.0f to provide enough resolution for the arrow shape
@@ -1677,7 +1681,7 @@ public class QuestScreen extends Screen {
             return true;
         }
 
-        if (isPickerOpen()) {
+        if (editorUI.isPickerOpen()) {
             editorUI.scrollOffset -= scrollY * 10;
             editorUI.scrollOffset = Math.max(0, editorUI.scrollOffset);
             return true;
@@ -1713,10 +1717,7 @@ public class QuestScreen extends Screen {
         this.offsetX += (mouseFromCenterX / oldZoom) - (mouseFromCenterX / this.zoom);
         this.offsetY += (mouseFromCenterY / oldZoom) - (mouseFromCenterY / this.zoom);
 
-        // 3. Save BACK to the chapter and trigger a local disk save immediately
-        this.selectedChapter.setOffsetX(this.offsetX);
-        this.selectedChapter.setOffsetY(this.offsetY);
-        this.selectedChapter.setZoom(this.zoom);
+        // 3. Trigger a local disk save immediately
         QuestClientData.saveChapterViewState(this.selectedChapter.getId(), this.offsetX, this.offsetY, this.zoom);
 
         return true;
@@ -1915,7 +1916,7 @@ public class QuestScreen extends Screen {
             }
 
             // 2. Pickers (Icon, Dependency, Shape, etc.)
-            if (isPickerOpen()) {
+            if (editorUI.isPickerOpen()) {
                 editorUI.closePicker();
                 return true;
             }
@@ -2105,7 +2106,7 @@ public class QuestScreen extends Screen {
         }
 
         // 1. Icon Picker Search Logic (Highest Priority)
-        if (isPickerOpen() || isTextEditorOpen || editorUI.isHexEditing || editorUI.isSubTitleOpen || editorUI.isDescriptionOpen || editorUI.isQuantityOpen || editorUI.isXOpen || editorUI.isYOpen || editorUI.isZOpen) {
+        if (editorUI.isPickerOpen() || isTextEditorOpen || editorUI.isHexEditing || editorUI.isSubTitleOpen || editorUI.isDescriptionOpen || editorUI.isQuantityOpen || editorUI.isXOpen || editorUI.isYOpen || editorUI.isZOpen) {
             if (event.key() == GLFW.GLFW_KEY_A && (event.modifiers() & GLFW.GLFW_MOD_CONTROL) != 0) {
                 if (editorUI.isHexEditing) {
                     editorUI.selectionStart = 0;
@@ -2311,11 +2312,14 @@ public class QuestScreen extends Screen {
             int b = (int)((baseColor & 0xFF) * 0.3f);
             int etchedColor = (0x99 << 24) | (r << 16) | (g << 8) | b;
 
-            // In this rotated space, 'd' is now an X-coordinate.
-            // We use the same 'lineXStart' and 'iThick' as the line above to guarantee parity.
-            graphics.blit(RenderPipelines.GUI_TEXTURED, QuestEditorUI.FLOW_ARROW, 
-                    (int)(d - iThick / 2.0f), lineXStart, 
-                    0, 0, iThick, iThick, iThick, iThick, etchedColor);
+            // FIX: Use the (int, int) translate signature required by the graphics wrapper.
+            // We cast the calculated positions to (int) to satisfy the method call.
+            graphics.pose().pushMatrix();
+            int tx = (int)(d - iThick / 2.0f);
+            graphics.pose().translate(tx, lineXStart);
+            graphics.blit(RenderPipelines.GUI_TEXTURED, QuestEditorUI.FLOW_ARROW,
+                    0, 0, 0, 0, iThick, iThick, iThick, iThick, etchedColor);
+            graphics.pose().popMatrix();
         }
 
         // 5. Restore the canvas matrix
@@ -2956,6 +2960,13 @@ public class QuestScreen extends Screen {
                 editingCanvasText = null;
             } else if (optionIndex == 2) { // Move
                 this.movingCanvasText = this.editingCanvasText;
+                // FIX: Calculate world-space offsets relative to where the context menu was opened
+                float absoluteCenterX = (float) (this.width / 2.0);
+                float absoluteCenterY = (float) (this.height / 2.0);
+                double worldMenuX = this.offsetX + ((contextMenuX - absoluteCenterX) / this.zoom);
+                double worldMenuY = this.offsetY + ((contextMenuY - absoluteCenterY) / this.zoom);
+                this.dragOffsetX = worldMenuX - this.movingCanvasText.getX();
+                this.dragOffsetY = worldMenuY - this.movingCanvasText.getY();
             }
             this.isTextContextMenu = false;
             this.isContextMenuOpen = false;
@@ -3293,23 +3304,6 @@ public class QuestScreen extends Screen {
                 this.isDraggingSizeSlider;
     }
 
-    private boolean isPickerOpen() {
-        // FIX: Must include all states that use searchQuery/typing to allow charTyped to fire
-        return this.editorUI.isIconPickerOpen ||
-                this.editorUI.isDependencyPickerOpen ||
-                this.editorUI.isShapePickerOpen ||
-                this.editorUI.isTypePickerOpen ||
-                this.editorUI.isTargetPickerOpen ||
-                this.editorUI.isTitleOpen ||
-                this.editorUI.isSubTitleOpen ||
-                this.editorUI.isDescriptionOpen ||
-                this.editorUI.isNameOpen ||
-                this.editorUI.isQuantityOpen ||
-                this.editorUI.isXOpen ||
-                this.editorUI.isYOpen ||
-                this.editorUI.isZOpen;
-    }
-
     public boolean isSidebarEditing() {
         return editingGroup != null || editingChapter != null;
     }
@@ -3323,10 +3317,6 @@ public class QuestScreen extends Screen {
     }
 
     public void selectChapter(SidebarChapter chapter) {
-        if (this.selectedChapter != null) {
-            this.selectedChapter.setOffsetX(this.offsetX);
-            this.selectedChapter.setOffsetY(this.offsetY);
-        }
         this.selectedChapter = chapter;
         this.offsetX = chapter.getOffsetX();
         this.offsetY = chapter.getOffsetY();
@@ -3396,7 +3386,7 @@ public class QuestScreen extends Screen {
             return true;
         }
 
-        if (isPickerOpen() || isTextEditorOpen) {
+        if (editorUI.isPickerOpen() || isTextEditorOpen) {
             charTypedInPicker(event.codepointAsString());
         }
         return super.charTyped(event);
@@ -3475,11 +3465,19 @@ public class QuestScreen extends Screen {
                 saveChapterData(chapter);
             }
             updateQuestStates();
+        checkPendingRefresh();
         }
         this.isEditorOpen = false;
         this.questToModify = null;
         this.originalQuest = null;
     }
+
+public void checkPendingRefresh() {
+    if (SimplyQuestsClientPacketHandler.NEEDS_REFRESH) {
+        SimplyQuestsClientPacketHandler.NEEDS_REFRESH = false;
+        this.init();
+    }
+}
 
     private String findGroupNameForChapter(String chapterId) {
         for (SidebarEntry entry : this.sidebarEntries) {
@@ -3874,8 +3872,13 @@ public class QuestScreen extends Screen {
         double absoluteCenterY = this.height / 2.0;
         double worldMouseX = this.offsetX + ((mouseX - absoluteCenterX) / this.zoom);
         double worldMouseY = this.offsetY + ((mouseY - absoluteCenterY) / this.zoom);
-        this.movingCanvasText.setX(Math.round(worldMouseX / GRID_SNAP) * GRID_SNAP);
-        this.movingCanvasText.setY(Math.round(worldMouseY / GRID_SNAP) * GRID_SNAP);
+
+        // FIX: Use offsets during drop calculation to maintain relative position
+        double targetX = worldMouseX - this.dragOffsetX;
+        double targetY = worldMouseY - this.dragOffsetY;
+
+        this.movingCanvasText.setX(Math.round(targetX / GRID_SNAP) * GRID_SNAP);
+        this.movingCanvasText.setY(Math.round(targetY / GRID_SNAP) * GRID_SNAP);
         saveChapterData(this.movingCanvasText.getChapterName());
     }
 
@@ -3909,13 +3912,6 @@ public class QuestScreen extends Screen {
 
         // 2. Perform the save if the chapter was found
         if (targetChapter != null) {
-            // FORCE SYNC: Ensure the sidebar chapter object has the screen's latest offsets before building the data object
-            if (targetChapter == this.selectedChapter) {
-                targetChapter.setOffsetX(this.offsetX);
-                targetChapter.setOffsetY(this.offsetY);
-                targetChapter.setZoom(this.zoom);
-            }
-
             final String finalChapterId = targetChapter.getId();
             // Calculate live ordering metadata
             int groupOrder = -1;

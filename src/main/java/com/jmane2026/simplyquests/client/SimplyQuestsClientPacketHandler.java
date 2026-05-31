@@ -27,6 +27,8 @@ public class SimplyQuestsClientPacketHandler {
     public static boolean IS_CLIENT_OP = false;
     public static boolean IS_EDIT_MODE_ALLOWED = false;
 
+    public static boolean NEEDS_REFRESH = false;
+
     public static void handleQuestCompleted(final QuestCompletedPayload payload, final IPayloadContext context) {
         context.enqueueWork(() -> {
             Minecraft mc = Minecraft.getInstance();
@@ -51,11 +53,16 @@ public class SimplyQuestsClientPacketHandler {
             manager.setChaptersFromList(payload.chapters());
             manager.setGroups(payload.groups());
 
-            // 2. Refresh the claimable badge cache for the inventory button
-            QuestScreen.updateClaimableCache();
-
             if (Minecraft.getInstance().screen instanceof QuestScreen screen) {
-                screen.init();
+                // FIX: If an editor is open, do NOT call init(). Flag it for later.
+                // This prevents "orphaned references" and sync-drift while editing.
+                if (screen.isEditorOpen || screen.isTaskEditorOpen || screen.isRewardEditorOpen || screen.isTextEditorOpen) {
+                    NEEDS_REFRESH = true;
+                    return;
+                }
+
+                // 2. Refresh the claimable badge cache
+                QuestScreen.updateClaimableCache();
             }
         });
     }

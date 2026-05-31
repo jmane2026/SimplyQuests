@@ -22,6 +22,13 @@ public class EditorHandler {
         return true;
     }
 
+    private static boolean isClickInsideActiveArea(int mouseX, int mouseY, int px, int py, int winW, int winH, QuestEditorUI ui) {
+        // The main editor window
+        if (mouseX >= px && mouseX <= px + winW && mouseY >= py && mouseY <= py + winH) return true;
+        // The picker window (px + 305, same height)
+        return ui.isPickerOpen() && mouseX >= px + 305 && mouseX <= px + 305 + 100 && mouseY >= py && mouseY <= py + winH;
+    }
+
     private static boolean handleTaskEditor(QuestScreen screen, int mouseX, int mouseY, int button) {
         int winW = 300, winH = 250;
         int px = (screen.width - winW) / 2, py = (screen.height - winH) / 2;
@@ -65,12 +72,13 @@ public class EditorHandler {
             return true;
         }
 
-        if (ui.isClickingCancel(mouseX, mouseY, px, py, winH) || (mouseX < px || mouseX > px + winW || mouseY < py || mouseY > py + winH)) {
+        if (ui.isClickingCancel(mouseX, mouseY, px, py, winH) || !isClickInsideActiveArea(mouseX, mouseY, px, py, winW, winH, ui)) {
             if (ui.isNameOpen || ui.isQuantityOpen) {
                 ui.closePicker();
             } else {
                 screen.isTaskEditorOpen = false; // FIX: Corrected target editor
                 ui.isTaskMode = false;
+                screen.checkPendingRefresh();
                 QuestScreen.playClickSound();
             }
             return true;
@@ -148,7 +156,7 @@ public class EditorHandler {
         }
 
         if (ui.isClickingSave(mouseX, mouseY, px, py, winH)) { screen.saveChanges(); QuestScreen.playClickSound(); return true; }
-        if (ui.isClickingCancel(mouseX, mouseY, px, py, winH) || (mouseX < px || mouseX > px + winW || mouseY < py || mouseY > py + winH)) {
+        if (ui.isClickingCancel(mouseX, mouseY, px, py, winH) || !isClickInsideActiveArea(mouseX, mouseY, px, py, winW, winH, ui)) {
             if (ui.isTitleOpen || ui.isSubTitleOpen || ui.isDescriptionOpen || ui.isIconPickerOpen || ui.isShapePickerOpen || ui.isDependencyPickerOpen) {
                 ui.closePicker(); // This method already calls playClickSound()
             } else {
@@ -226,7 +234,7 @@ public class EditorHandler {
             return true;
         }
         
-        if (ui.isClickingCancel(mouseX, mouseY, px, py, winH) || (mouseX < px || mouseX > px + winW || mouseY < py || mouseY > py + winH)) {
+        if (ui.isClickingCancel(mouseX, mouseY, px, py, winH) || !isClickInsideActiveArea(mouseX, mouseY, px, py, winW, winH, ui)) {
             if (ui.isNameOpen || ui.isQuantityOpen || ui.isTypePickerOpen || ui.isIconPickerOpen) {
                 ui.closePicker();
             } else {

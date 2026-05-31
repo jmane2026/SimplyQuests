@@ -53,8 +53,7 @@ public class QuestManager extends SimpleJsonResourceReloadListener {
     public void setChaptersFromList(List<QuestChapter> list) {
         this.chapters.clear();
         for (QuestChapter ch : list) {
-            // FIX: Use the standardized sanitization regex used by the rest of the mod
-            // This prevents ID mismatches when names contain special characters
+            // FIX: Use the standardized strict regex to ensure IDs match the server's file system
             String sanitized = ch.getName().toLowerCase().replaceAll("[^a-z0-9/._-]", "_");
             Identifier id = Identifier.fromNamespaceAndPath("simplyquests", sanitized);
             this.chapters.put(id, ch);

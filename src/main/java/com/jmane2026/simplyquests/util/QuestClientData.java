@@ -85,11 +85,25 @@ public class QuestClientData {
         }
     }
 
+    public static Boolean isGroupExpanded(String groupId) {
+        return data.expandedGroups.get(groupId);
+    }
+
+    public static void setGroupExpanded(String groupId, boolean expanded) {
+        Boolean current = data.expandedGroups.get(groupId);
+        if (current == null || current != expanded) {
+            data.expandedGroups.put(groupId, expanded);
+            save();
+        }
+    }
+
     private static class Data {
         String lastChapter = "";
         double zoom = 1.0;
         boolean editMode = false;
         // Key: Chapter sanitized ID, Value: The specific camera position for that chapter
         Map<String, ViewState> chapterViews = new HashMap<>();
+        // Key: Group sanitized ID, Value: Expansion state
+        Map<String, Boolean> expandedGroups = new HashMap<>();
     }
 }

@@ -4,6 +4,7 @@ import com.jmane2026.simplyquests.client.SimplyQuestsClientPacketHandler;
 import com.jmane2026.simplyquests.client.screen.*;
 import com.jmane2026.simplyquests.quest.*;
 import com.jmane2026.simplyquests.network.*;
+import com.jmane2026.simplyquests.util.QuestClientData;
 import net.minecraft.client.Minecraft;
 import net.neoforged.neoforge.client.network.ClientPacketDistributor;
 import org.lwjgl.glfw.GLFW;
@@ -133,6 +134,15 @@ public class CanvasHandler {
             for (CanvasText ct : screen.allCanvasTexts) {
                 if (ct.getChapterName().equals(activeChapterId) && screen.isMouseOverText(mouseX, mouseY, ct)) {
                     screen.movingCanvasText = ct;
+
+                    // FIX: Capture the anchor offset so the text doesn't snap its corner to the mouse
+                    double absoluteCenterX = screen.width / 2.0;
+                    double absoluteCenterY = screen.height / 2.0;
+                    double worldMouseX = screen.offsetX + ((mouseX - absoluteCenterX) / screen.zoom);
+                    double worldMouseY = screen.offsetY + ((mouseY - absoluteCenterY) / screen.zoom);
+                    screen.dragOffsetX = worldMouseX - ct.getX();
+                    screen.dragOffsetY = worldMouseY - ct.getY();
+
                     QuestScreen.playClickSound();
                     return true;
                 }
@@ -203,7 +213,8 @@ public class CanvasHandler {
                     // C. Toggle Expansion (Left Click) or Context Menu (Right Click)
                     if (button == 0) {
                         group.toggleExpanded();
-                        screen.saveGroupManifest();
+                        // FIX: Save expansion state locally instead of globally overwriting the server manifest
+                        QuestClientData.setGroupExpanded(Quest.sanitizePath(group.getTitle()), group.isExpanded());
                         QuestScreen.playClickSound();
                     } else if (button == 1 && QuestGlobalState.isEditModeEnabled) {
                         screen.openSidebarEntryContextMenu(mouseX, mouseY, group, null);

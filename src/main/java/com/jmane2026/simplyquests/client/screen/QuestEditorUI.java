@@ -104,6 +104,22 @@ public class QuestEditorUI {
         return new PickerBounds(pickerX, pickerY, pickerW, pickerH, searchBarHeight);
     }
 
+    public boolean isPickerOpen() {
+        return this.isIconPickerOpen ||
+                this.isDependencyPickerOpen ||
+                this.isShapePickerOpen ||
+                this.isTypePickerOpen ||
+                this.isTargetPickerOpen ||
+                this.isTitleOpen ||
+                this.isSubTitleOpen ||
+                this.isDescriptionOpen ||
+                this.isNameOpen ||
+                this.isQuantityOpen ||
+                this.isXOpen ||
+                this.isYOpen ||
+                this.isZOpen;
+    }
+
     public void render(GuiGraphicsExtractor graphics, int mouseX, int mouseY, int panelX, int panelY, int panelWidth, int panelHeight, Quest quest, List<Quest> allQuests) {
 
         // --- 1. LAYOUT CONSTANTS ---
