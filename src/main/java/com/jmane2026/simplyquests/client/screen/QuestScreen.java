@@ -321,9 +321,10 @@ public class QuestScreen extends Screen {
 
         // --- LOAD REAL DATA FROM MANAGER ---
         if (this.sidebarEntries.isEmpty()) {
-            // FIX: Pull data from the Manager stored in QuestServerEvents
-            Map<Identifier, QuestChapter> chapterMap = QuestServerEvents.getQuestManager().getChapters();
-            List<QuestGroup> groupDefinitions = QuestServerEvents.getQuestManager().getGroups();
+            // FIX: Pull from the Client Cache (SimplyQuestsClientPacketHandler) instead of the Server Manager.
+            // This ensures data is visible when playing on a dedicated server.
+            Map<Identifier, QuestChapter> chapterMap = SimplyQuestsClientPacketHandler.getChapters();
+            List<QuestGroup> groupDefinitions = SimplyQuestsClientPacketHandler.getGroups();
 
             // Use a map to collect root entries and their intended order to avoid TreeMap collisions
             Map<SidebarEntry, Integer> rootOrderMap = new HashMap<>();
@@ -1178,7 +1179,7 @@ public class QuestScreen extends Screen {
             int panelY = isEditingChapterIcon ? 20 : (this.height - ph) / 2;
             QuestEditorUI.PickerBounds b = editorUI.getPickerBounds(panelX, panelY, ph);
             editorUI.renderPickerFrame(graphics, b, true, editorUI.searchQuery, () -> {
-                List<Item> filteredItems = editorUI.getFilteredIcons();
+                List<Item> filteredItems = editorUI.getCachedIcons();
                 int columns = QuestEditorUI.PICKER_COLUMNS;
                 int cellSize = 18;
                 int totalContentHeight = (int) Math.ceil(filteredItems.size() / (double) columns) * cellSize;
@@ -1264,8 +1265,8 @@ public class QuestScreen extends Screen {
                 // Build detailed path: Group > Chapter > Quest
                 String tooltipText = hoveredQuest.getTitle();
 
-                // FIX: Pull from the Manager
-                Map<Identifier, QuestChapter> chapterMap = QuestServerEvents.getQuestManager().getChapters();
+                // FIX: Pull from the Client Cache
+                Map<Identifier, QuestChapter> chapterMap = SimplyQuestsClientPacketHandler.getChapters();
                 
                 // Look up the actual Chapter data using the sanitized ID
                 Identifier chId = Identifier.fromNamespaceAndPath("simplyquests", Quest.sanitizePath(hoveredQuest.getChapterName()));
@@ -1278,7 +1279,7 @@ public class QuestScreen extends Screen {
 
                     if (chapter.getGroupName() != null && !chapter.getGroupName().isEmpty()) {
                         String gId = Quest.sanitizePath(chapter.getGroupName());
-                        grpTitle = QuestServerEvents.getQuestManager().getGroups().stream()
+                        grpTitle = SimplyQuestsClientPacketHandler.getGroups().stream()
                                 .filter(g -> g.getName().equals(gId))
                                 .map(QuestGroup::getTitle)
                                 .findFirst().orElse("");
@@ -1464,7 +1465,41 @@ public class QuestScreen extends Screen {
         }
 
         // =========================================================================
-        // PASS 1: DRAW THE LINES FIRST (Layered behind the nodes)
+        // PASS 1: DRAW CANVAS IMAGES (Background)
+        // =========================================================================
+        for (QuestCanvasImage ci : this.allCanvasImages) {
+            if (!ci.getChapterName().equals(activeChapterId)) continue;
+
+            Identifier tex = getOrRequestImage(ci.getImageId());
+            if (tex == null) continue;
+
+            graphics.pose().pushMatrix();
+            graphics.pose().translate((float)ci.getX(), (float)ci.getY());
+            graphics.pose().rotate(ci.getRotation());
+
+            // Use the 10-parameter blit for scaling
+            graphics.blit(RenderPipelines.GUI_TEXTURED, tex, 0, 0, 0f, 0f, (int)ci.getWidth(), (int)ci.getHeight(), (int)ci.getWidth(), (int)ci.getHeight());
+            graphics.pose().popMatrix();
+        }
+
+        // =========================================================================
+        // PASS 2: DRAW CANVAS TEXT
+        // =========================================================================
+        for (CanvasText ct : this.allCanvasTexts) {
+            if (!ct.getChapterName().equals(activeChapterId)) continue;
+
+            graphics.pose().pushMatrix();
+            graphics.pose().translate((float)ct.getX(), (float)ct.getY());
+            graphics.pose().scale(ct.getScale(), ct.getScale());
+
+            int color = ct.getColor();
+            graphics.text(this.font, Component.literal(ct.getText()), 0, 0, color);
+
+            graphics.pose().popMatrix();
+        }
+
+        // =========================================================================
+        // PASS 3: DRAW THE LINES (Layered on top of decorations)
         // =========================================================================
         for (Quest quest : this.allQuests) {
 
@@ -1509,7 +1544,7 @@ public class QuestScreen extends Screen {
         }
 
         // =========================================================================
-        // PASS 2: DRAW THE NODES SECOND (Layered cleanly on top of lines)
+        // PASS 4: DRAW THE NODES (Layered cleanly on top of lines)
         // =========================================================================
         for (Quest quest : this.allQuests) {
 
@@ -1559,41 +1594,6 @@ public class QuestScreen extends Screen {
                 graphics.blit(RenderPipelines.GUI_TEXTURED, QuestEditorUI.CLAIM_ICON, 0, 0, 0.0f, 0.0f, 8, 8, 8, 8);
                 graphics.pose().popMatrix();
             }
-        }
-
-        // =========================================================================
-        // PASS 3: DRAW CANVAS TEXT
-        // =========================================================================
-        for (CanvasText ct : this.allCanvasTexts) {
-            if (!ct.getChapterName().equals(activeChapterId)) continue;
-
-            graphics.pose().pushMatrix();
-            graphics.pose().translate((float)ct.getX(), (float)ct.getY());
-            graphics.pose().scale(ct.getScale(), ct.getScale());
-
-            int color = ct.getColor();
-            graphics.text(this.font, Component.literal(ct.getText()), 0, 0, color);
-
-            graphics.pose().popMatrix();
-        }
-
-        // =========================================================================
-        // PASS 4: DRAW CANVAS IMAGES
-        // =========================================================================
-        for (QuestCanvasImage ci : this.allCanvasImages) {
-            if (!ci.getChapterName().equals(activeChapterId)) continue;
-
-            Identifier tex = getOrRequestImage(ci.getImageId());
-            if (tex == null) continue;
-
-            graphics.pose().pushMatrix();
-            graphics.pose().translate((float)ci.getX(), (float)ci.getY());
-            graphics.pose().rotate(ci.getRotation());
-
-            float alpha = ci.getAlpha();
-            // Use the 10-parameter blit for scaling
-            graphics.blit(RenderPipelines.GUI_TEXTURED, tex, 0, 0, 0f, 0f, (int)ci.getWidth(), (int)ci.getHeight(), (int)ci.getWidth(), (int)ci.getHeight());
-            graphics.pose().popMatrix();
         }
 
         // PASS 5: RENDER GHOST NODE (Shared scope with ghostX/ghostY)
@@ -1694,10 +1694,6 @@ public class QuestScreen extends Screen {
         if ((isEditorOpen || this.selectedQuest != null || this.suppressPanning) && !isMouseOverSidebar) {
             return true;
         }
-
-        // 1. Force the global camera to match the selected chapter before calculating anything
-        this.offsetX = this.selectedChapter.getOffsetX();
-        this.offsetY = this.selectedChapter.getOffsetY();
 
         double zoomFactor = 1.1;
         double oldZoom = this.zoom;
@@ -4758,8 +4754,8 @@ public class QuestScreen extends Screen {
      * Called only when player data actually changes.
      */
     public static void updateClaimableCache() {
-        // FIX: Pull from the Manager
-        Map<Identifier, QuestChapter> chapterMap = QuestServerEvents.getQuestManager().getChapters();
+        // FIX: Pull from the Client Cache
+        Map<Identifier, QuestChapter> chapterMap = SimplyQuestsClientPacketHandler.getChapters();
 
         if (chapterMap == null || chapterMap.isEmpty()) {
             anyClaimableCache = false;

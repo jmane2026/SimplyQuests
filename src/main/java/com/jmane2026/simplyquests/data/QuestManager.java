@@ -53,7 +53,10 @@ public class QuestManager extends SimpleJsonResourceReloadListener {
     public void setChaptersFromList(List<QuestChapter> list) {
         this.chapters.clear();
         for (QuestChapter ch : list) {
-            Identifier id = Identifier.fromNamespaceAndPath("simplyquests", ch.getName().toLowerCase().replace(" ", "_"));
+            // FIX: Use the standardized sanitization regex used by the rest of the mod
+            // This prevents ID mismatches when names contain special characters
+            String sanitized = ch.getName().toLowerCase().replaceAll("[^a-z0-9/._-]", "_");
+            Identifier id = Identifier.fromNamespaceAndPath("simplyquests", sanitized);
             this.chapters.put(id, ch);
         }
     }
@@ -220,12 +223,14 @@ public class QuestManager extends SimpleJsonResourceReloadListener {
 
         for (File file : files) {
             try (FileReader reader = new FileReader(file, StandardCharsets.UTF_8)) {
-                com.google.gson.JsonObject json = GSON.fromJson(reader, com.google.gson.JsonObject.class);
+                JsonObject json = GSON.fromJson(reader, JsonObject.class);
                 QuestChapter.CODEC.parse(JsonOps.INSTANCE, json)
                         .resultOrPartial(err -> LOGGER.error("Failed to parse config quest {}: {}", file.getName(), err))
                         .ifPresent(chapter -> {
-                            String name = file.getName().replace(".json", "");
-                            targetMap.put(Identifier.fromNamespaceAndPath("simplyquests", name), chapter);
+                            // FIX: Ensure filenames are sanitized into valid Identifiers during load
+                            String name = file.getName().replace(".json", "").toLowerCase().replaceAll("[^a-z0-9/._-]", "_");
+                            Identifier id = Identifier.fromNamespaceAndPath("simplyquests", name);
+                            targetMap.put(id, chapter);
                         });
             } catch (Exception e) {
                 LOGGER.error("Failed to read quest file {}", file.getName(), e);

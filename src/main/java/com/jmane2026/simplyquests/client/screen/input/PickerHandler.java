@@ -138,7 +138,7 @@ public class PickerHandler {
             // FIX 1: Boundary check for columns to prevent "bleed-over" selection
             if (col < 0 || col >= 5) return true;
 
-            List<Item> icons = ui.getFilteredIcons();
+            List<Item> icons = ui.getCachedIcons();
             boolean showCheck = ui.searchQuery.isEmpty() || "checkmark".contains(ui.searchQuery.toLowerCase());
             int idx = col + (row * 5);
 

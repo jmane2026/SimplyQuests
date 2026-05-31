@@ -82,6 +82,14 @@ public class QuestEditorUI {
     public int selectionEnd = -1;
     public static final int PICKER_COLUMNS = 5;
 
+    // --- PERFORMANCE CACHE ---
+    private String lastQuery = null;
+    private QuestTask.TaskType lastType = null;
+    private List<Item> cachedIcons = new ArrayList<>();
+    private List<String> cachedTargets = new ArrayList<>();
+    private List<Quest> cachedDependencies = new ArrayList<>();
+
+
     public record PickerBounds(int x, int y, int w, int h, int barHeight) {}
 
     public PickerBounds getPickerBounds(int panelX, int panelY, int panelHeight) {
@@ -256,7 +264,7 @@ public class QuestEditorUI {
         if (isDependencyPickerOpen) {
             renderPickerFrame(graphics, getPickerBounds(panelX, panelY, panelHeight), true, searchQuery, () -> {
                 PickerBounds b = getPickerBounds(panelX, panelY, panelHeight);
-                List<Quest> filteredQuests = getFilteredDependencies(allQuests, quest);
+                List<Quest> filteredQuests = getCachedDependencies(allQuests, quest);
                 Quest hoveredQuest = null;
 
                 // 1. Define the uniform height
@@ -692,11 +700,41 @@ public class QuestEditorUI {
                 PickerBounds b = getPickerBounds(panelX, panelY, panelHeight);
                 
                 if (isIconPickerOpen) {
-                    // Standard Icon Picker logic (already exists in your class, simplified for brevity in this diff)
-                    // Ensure it uses localized names as we discussed.
+                    List<Item> filteredItems = getCachedIcons();
+                    int columns = PICKER_COLUMNS;
+                    int cellSize = 18;
+                    int totalContentHeight = (int) Math.ceil(filteredItems.size() / (double) columns) * cellSize;
+                    int visibleHeight = b.h() - b.barHeight() - 10;
+                    if (scrollOffset > Math.max(0, totalContentHeight - visibleHeight)) scrollOffset = Math.max(0, totalContentHeight - visibleHeight);
+
+                    graphics.enableScissor(b.x() + 1, b.y() + b.barHeight(), b.x() + b.w() - 1, b.y() + b.h() - 1);
+                    String hoveredName = null;
+                    boolean showCheckmark = searchQuery.isEmpty() || "checkmark".contains(searchQuery.toLowerCase());
+                    int totalEntries = filteredItems.size() + (showCheckmark ? 1 : 0);
+
+                    for (int i = 0; i < totalEntries; i++) {
+                        int ix = b.x() + 5 + (i % columns) * cellSize;
+                        int iy = (b.y() + 16 + 5) + (i / columns) * cellSize - (int) scrollOffset;
+
+                        if (mouseX > ix && mouseX < ix + 16 && mouseY > iy && mouseY < iy + 16) {
+                            graphics.fill(ix - 1, iy - 1, ix + 17, iy + 17, QuestScreen.COL_HOVER_MENU);
+                            if (showCheckmark && i == 0) hoveredName = "Checkmark";
+                            else {
+                                Item item = filteredItems.get(showCheckmark ? i - 1 : i);
+                                hoveredName = item.getDefaultInstance().getHoverName().getString();
+                            }
+                        }
+
+                        if (iy >= b.y() + b.barHeight() && iy < b.y() + b.h() - 1) {
+                            if (showCheckmark && i == 0) drawCheckmark(graphics, ix, iy, 16);
+                            else graphics.item(new ItemStack(filteredItems.get(showCheckmark ? i - 1 : i)), ix, iy);
+                        }
+                    }
+                    graphics.disableScissor();
+                    if (hoveredName != null) drawCustomTooltip(graphics, hoveredName, mouseX, mouseY);
                 } else if (taskType != null && task != null) {
                     // Target Picker logic for Tasks
-                    List<String> targets = getFilteredTargets(taskType);
+                    List<String> targets = getCachedTargets(taskType);
                     int columns = (taskType == QuestTask.TaskType.BIOME) ? 1 : (taskType == QuestTask.TaskType.KILL ? 3 : PICKER_COLUMNS);
                     int cellSize = (taskType == QuestTask.TaskType.BIOME) ? 16 : (taskType == QuestTask.TaskType.KILL ? 30 : 18);
                     int totalContentHeight = (int) Math.ceil(targets.size() / (double) columns) * cellSize;
@@ -1005,11 +1043,16 @@ public class QuestEditorUI {
                 mouseY >= btnY && mouseY <= btnY + 14;
     }
 
-    public List<Item> getAvailableIcons() {
-        return this.availableIcons;
+    // --- CACHED GETTERS ---
+
+    public List<Item> getCachedIcons() {
+        if (searchQuery.equals(lastQuery) && !cachedIcons.isEmpty()) return cachedIcons;
+        this.cachedIcons = getFilteredIcons();
+        this.lastQuery = searchQuery;
+        return cachedIcons;
     }
 
-    public List<Item> getFilteredIcons() {
+    private List<Item> getFilteredIcons() {
         if (searchQuery.isEmpty()) return availableIcons;
         String query = searchQuery.toLowerCase();
 
@@ -1022,6 +1065,23 @@ public class QuestEditorUI {
                     return displayName.contains(query) || registryName.contains(query);
                 })
                 .toList();
+    }
+
+    public List<String> getCachedTargets(QuestTask.TaskType type) {
+        if (searchQuery.equals(lastQuery) && type == lastType && !cachedTargets.isEmpty()) return cachedTargets;
+        this.cachedTargets = getFilteredTargets(type);
+        this.lastQuery = searchQuery;
+        this.lastType = type;
+        return cachedTargets;
+    }
+
+    public List<Quest> getCachedDependencies(List<Quest> allQuests, Quest questToModify) {
+        // Note: We don't cache allQuests size here because dependencies can change via right-click
+        // but the query is the main performance killer.
+        if (searchQuery.equals(lastQuery) && !cachedDependencies.isEmpty()) return cachedDependencies;
+        this.cachedDependencies = getFilteredDependencies(allQuests, questToModify);
+        this.lastQuery = searchQuery;
+        return cachedDependencies;
     }
 
     private void drawCustomTooltip(GuiGraphicsExtractor graphics, String text, int mouseX, int mouseY) {

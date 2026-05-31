@@ -1,17 +1,18 @@
 package com.jmane2026.simplyquests.client;
 
 import com.jmane2026.simplyquests.client.screen.QuestScreen;
+import com.jmane2026.simplyquests.data.QuestChapter;
+import com.jmane2026.simplyquests.data.QuestGroup;
 import com.jmane2026.simplyquests.events.QuestServerEvents;
 import com.jmane2026.simplyquests.network.*;
 import com.jmane2026.simplyquests.util.QuestClientData;
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.resources.sounds.SimpleSoundInstance;
+import net.minecraft.resources.Identifier;
 import net.minecraft.sounds.SoundEvents;
-import net.minecraft.world.item.ItemStack;
 import net.neoforged.neoforge.network.handling.IPayloadContext;
-import java.util.HashSet;
-import java.util.Map;
-import java.util.Set;
+
+import java.util.*;
 import java.util.concurrent.ConcurrentHashMap;
 
 /**
@@ -45,14 +46,22 @@ public class SimplyQuestsClientPacketHandler {
     public static void handleSyncQuestTree(final SyncQuestTreePayload payload, final IPayloadContext context) {
         context.enqueueWork(() -> {
             var manager = QuestServerEvents.getQuestManager();
+            
+            // 1. Update the Manager (which handles sanitization internally now)
             manager.setChaptersFromList(payload.chapters());
             manager.setGroups(payload.groups());
+
+            // 2. Refresh the claimable badge cache for the inventory button
+            QuestScreen.updateClaimableCache();
 
             if (Minecraft.getInstance().screen instanceof QuestScreen screen) {
                 screen.init();
             }
         });
     }
+
+    public static Map<Identifier, QuestChapter> getChapters() { return QuestServerEvents.getQuestManager().getChapters(); }
+    public static List<QuestGroup> getGroups() { return QuestServerEvents.getQuestManager().getGroups(); }
 
     public static void handleSyncOpStatus(final SyncOpStatusPayload payload, final IPayloadContext context) {
         context.enqueueWork(() -> {
