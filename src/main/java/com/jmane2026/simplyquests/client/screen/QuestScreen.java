@@ -1568,7 +1568,7 @@ public class QuestScreen extends Screen {
 
             // Render the item Logo centered and scaled inside the node boundary box
             ItemStack logoStack = new ItemStack(quest.getLogo());
-            float itemScale = (quest.getSize() / 24.0f) * 0.65f; // Reduced from 85% to 65% for better padding
+            float itemScale = (quest.getSize() / 24.0f); // Padding is now handled by drawQuestIcon helper
             graphics.pose().pushMatrix();
             // Translate to the center of the quest node
             graphics.pose().translate(x + size / 2.0f, y + size / 2.0f);
@@ -2581,7 +2581,7 @@ public class QuestScreen extends Screen {
                 boolean isTaskHovered = mouseX >= ix && mouseX <= ix + slotSize && mouseY >= tasksAreaY && mouseY <= tasksAreaY + slotSize;
                 int innerColor = (isTaskHovered && !isBeingMoved && !isSubEditorOpen) ? COL_PANEL_HEADER : COL_UI_BG;
                 if (isTaskHovered && !isBeingMoved && !isSubEditorOpen) {
-                    hoveredTaskName = task.getName();
+                    hoveredTaskName = getTaskTooltip(task);
                 }
 
                 // --- RENDER TASK INFO TEXT ---
@@ -2680,6 +2680,27 @@ public class QuestScreen extends Screen {
         if (showSubTitleOverlay) {
             renderStaticTextOverlay(graphics, fullSubTitle, x + 10, subTitleY, panelWidth - 20);
         }
+    }
+
+    private String getTaskTooltip(QuestTask task) {
+        String baseName = task.getTargetDisplayName();
+        
+        // FIX: If the name is just the auto-generated target name, ignore it to show the instruction instead
+        if (!task.getName().isEmpty() && !task.getName().equals("New Task") && 
+            !task.getName().equals("(Default)") && !task.getName().equals(baseName)) {
+            return task.getName();
+        }
+
+        String qtyPrefix = task.getRequiredAmount() > 1 ? task.getRequiredAmount() + "x " : "";
+
+        return switch (task.getType()) {
+            case ITEM -> "Collect " + qtyPrefix + baseName;
+            case KILL -> "Kill " + qtyPrefix + baseName;
+            case OBSERVE -> "Look at " + baseName;
+            case BIOME -> "Explore " + baseName;
+            case LOCATION -> "Travel to " + task.getTargetX() + ", " + task.getTargetY() + ", " + task.getTargetZ();
+            case CHECKBOX -> task.getName();
+        };
     }
 
     private void renderRewardLabel(GuiGraphicsExtractor graphics, QuestReward reward, int ix, int iy, int size) {

@@ -4,6 +4,7 @@ import com.jmane2026.simplyquests.SimplyQuests;
 import com.jmane2026.simplyquests.data.QuestChapter;
 import com.jmane2026.simplyquests.data.QuestManager;
 import com.jmane2026.simplyquests.network.*;
+import com.mojang.logging.LogUtils;
 import com.jmane2026.simplyquests.quest.QuestGlobalState;
 import com.jmane2026.simplyquests.player.PlayerQuestProgress;
 import com.jmane2026.simplyquests.quest.Quest;
@@ -20,8 +21,16 @@ import net.minecraft.resources.ResourceKey;
 import net.minecraft.server.level.ServerPlayer;
 import net.minecraft.resources.Identifier;
 import net.minecraft.server.players.NameAndId;
+import net.minecraft.world.entity.EntityType;
 import net.minecraft.world.entity.player.Inventory;
 import net.minecraft.tags.TagKey;
+import net.minecraft.world.entity.projectile.ProjectileUtil;
+import net.minecraft.world.level.block.Block;
+import net.minecraft.world.phys.BlockHitResult;
+import net.minecraft.world.phys.EntityHitResult;
+import net.minecraft.world.phys.HitResult;
+import net.minecraft.world.phys.AABB;
+import net.minecraft.world.phys.Vec3;
 import net.minecraft.world.item.Item;
 import net.minecraft.world.item.ItemStack;
 import net.minecraft.world.item.Items;
@@ -33,6 +42,7 @@ import net.neoforged.neoforge.event.entity.player.ItemEntityPickupEvent;
 import net.neoforged.neoforge.event.entity.player.PlayerEvent;
 import net.neoforged.neoforge.event.tick.PlayerTickEvent;
 import net.neoforged.neoforge.network.PacketDistributor;
+import org.slf4j.Logger;
 
 import java.util.ArrayList;
 import java.util.HashMap;
@@ -43,6 +53,7 @@ import java.util.Map;
 import java.util.UUID;
 
 public class QuestServerEvents {
+    private static final Logger LOGGER = LogUtils.getLogger();
 
     private static final QuestManager QUEST_MANAGER = new QuestManager();
 
@@ -336,9 +347,12 @@ public class QuestServerEvents {
     @SubscribeEvent
     public static void onPlayerTick(PlayerTickEvent.Post event) {
         // Run checks every 20 ticks (1 second) to save CPU
-        if (event.getEntity() instanceof ServerPlayer player && player.tickCount % 20 == 0) {
-            boolean progressMade = false;
+        if (event.getEntity() instanceof ServerPlayer player) {
+            if (player.tickCount % 20 != 0) return;
+
             List<Quest> allQuests = QUEST_MANAGER.getAllQuests();
+            
+            boolean progressMade = false;
             PlayerQuestProgress progress = player.getData(QuestAttachmentRegistry.PLAYER_PROGRESS);
             
             // In 26.1, Biomes are Holders. We unwrap the key and map it to get the Identifier directly.
@@ -346,7 +360,10 @@ public class QuestServerEvents {
                     .unwrapKey().map(ResourceKey::identifier).orElse(null);
 
             for (Quest quest : allQuests) {
-                if (progress.isQuestComplete(quest.getId()) || !isQuestUnlocked(quest, progress)) continue;
+                boolean complete = progress.isQuestComplete(quest.getId());
+                boolean unlocked = isQuestUnlocked(quest, progress);
+
+                if (complete || !unlocked) continue;
 
                 for (QuestTask task : quest.getTasks()) {
                     if (progress.getTaskAmount(task.getId()) >= task.getRequiredAmount()) continue;
@@ -355,6 +372,57 @@ public class QuestServerEvents {
                         if (task.getTargetId().equals(currentBiome.toString())) {
                             progress.setTaskAmount(task.getId(), 1);
                             player.setData(QuestAttachmentRegistry.PLAYER_PROGRESS, progress); // FORCE NBT SAVE
+                            progressMade = true;
+                        }
+                    } else if (task.getType() == QuestTask.TaskType.OBSERVE) {
+                        // Perform a hybrid raytrace to detect both Blocks/Fluids and Entities (Range: 20 blocks)
+                        double range = 20.0;
+                        float partialTicks = 0.0f;
+                        
+                        // 1. Check for Blocks and Fluids (liquids enabled)
+                        HitResult blockHit = player.pick(range, partialTicks, true);
+                        
+                        // 2. Check for Entities along the same look vector
+                        Vec3 eyePos = player.getEyePosition(1.0f);
+                        Vec3 viewVec = player.getViewVector(partialTicks);
+                        Vec3 reachVec = eyePos.add(viewVec.scale(range));
+                        AABB searchBox = player.getBoundingBox().expandTowards(viewVec.scale(range)).inflate(1.0, 1.0, 1.0);
+                        EntityHitResult entityHit = ProjectileUtil.getEntityHitResult(player, eyePos, reachVec, searchBox, (e) -> !e.isSpectator() && e.isPickable(), range * range);
+
+                        String target = task.getTargetId();
+                        boolean isTag = target.startsWith("#");
+                        boolean matched = false;
+                        String debugHitId = "Nothing";
+
+                        // 1. Check Entities
+                        if (entityHit != null) {
+                            EntityType<?> type = entityHit.getEntity().getType();
+                            debugHitId = BuiltInRegistries.ENTITY_TYPE.getKey(type).toString();
+                            if (isTag) {
+                                TagKey<EntityType<?>> tagKey = TagKey.create(Registries.ENTITY_TYPE, Identifier.parse(target.substring(1)));
+                                if (BuiltInRegistries.ENTITY_TYPE.wrapAsHolder(type).is(tagKey)) matched = true;
+                            } else if (target.equals(BuiltInRegistries.ENTITY_TYPE.getKey(type).toString())) {
+                                matched = true;
+                            }
+                        }
+
+                        // 2. Check Blocks/Fluids (If entity didn't already match)
+                        if (!matched && blockHit.getType() == HitResult.Type.BLOCK) {
+                            var state = player.level().getBlockState(((BlockHitResult)blockHit).getBlockPos());
+                            debugHitId = BuiltInRegistries.BLOCK.getKey(state.getBlock()).toString();
+                            
+                            if (isTag) {
+                                TagKey<Block> tagKey = TagKey.create(Registries.BLOCK, Identifier.parse(target.substring(1)));
+                                if (state.is(tagKey)) matched = true;
+                            } else if (target.equals(debugHitId)) {
+                                matched = true;
+                            }
+                        }
+                        
+                        // FIX: Actually apply the progress if matched
+                        if (matched) {
+                            progress.setTaskAmount(task.getId(), 1);
+                            player.setData(QuestAttachmentRegistry.PLAYER_PROGRESS, progress);
                             progressMade = true;
                         }
                     } else if (task.getType() == QuestTask.TaskType.LOCATION) {

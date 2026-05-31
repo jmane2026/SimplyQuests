@@ -86,6 +86,7 @@ public class PickerHandler {
                             case ITEM -> screen.taskToModify.setTargetId("minecraft:air");
                             case KILL -> screen.taskToModify.setTargetId("minecraft:pig");
                             case BIOME -> screen.taskToModify.setTargetId("minecraft:plains");
+                            case OBSERVE -> screen.taskToModify.setTargetId("minecraft:grass_block");
                             case LOCATION -> {
                                 screen.taskToModify.setTargetId("Location");
                                 screen.taskToModify.setTargetX(0);

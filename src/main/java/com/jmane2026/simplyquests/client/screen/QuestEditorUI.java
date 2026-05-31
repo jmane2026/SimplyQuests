@@ -137,7 +137,7 @@ public class QuestEditorUI {
         QuestShapeRenderer.render(quest.getShape(), graphics, panelX + panelWidth - 35, panelY + 4, 16, stateColor, QuestScreen.COL_UI_BG);
         graphics.pose().pushMatrix();
         graphics.pose().translate(panelX + panelWidth - 35 + 8.0f, panelY + 4 + 8.0f);
-        graphics.pose().scale(0.65f, 0.65f);
+        graphics.pose().scale(1.0f, 1.0f); // FIX: Removed redundant scale, renderCenteredItem handles padding
         drawQuestIcon(graphics, quest, -8, -8, 16);
         graphics.pose().popMatrix();
 
@@ -176,7 +176,7 @@ public class QuestEditorUI {
             } else if (labels[i].equals("Icon")) {
                 graphics.pose().pushMatrix();
                 graphics.pose().translate(valueX + 8.0f, rowY - 2 + 8.0f);
-                graphics.pose().scale(0.65f, 0.65f);
+                graphics.pose().scale(1.0f, 1.0f); // FIX: Removed redundant scale
                 drawQuestIcon(graphics, quest, -8, -8, 16);
                 graphics.pose().popMatrix();
                 // FIX: Dynamically determine the label for the Icon row
@@ -312,7 +312,7 @@ public class QuestEditorUI {
                     // Scale the item inside the list row for better visibility
                     graphics.pose().pushMatrix();
                     graphics.pose().translate(((b.x() + 4) / scale) + 8.0f, iconY + 8.0f);
-                    graphics.pose().scale(0.65f, 0.65f);
+                    graphics.pose().scale(1.0f, 1.0f); // FIX: Removed redundant scale
                     drawQuestIcon(graphics, q, -8, -8, 16);
                     graphics.pose().popMatrix();
 
@@ -430,7 +430,7 @@ public class QuestEditorUI {
             case ITEM -> new String[]{"Type", "Target", "Name", "Quantity", "Optional", "Repeatable", "Consume"};
             case KILL -> new String[]{"Type", "Target", "Name", "Quantity", "Optional", "Repeatable"};
             case CHECKBOX -> new String[]{"Type", "Name", "Optional", "Repeatable"};
-            case BIOME -> new String[]{"Type", "Target", "Name", "Optional", "Repeatable"};
+            case BIOME, OBSERVE -> new String[]{"Type", "Target", "Name", "Optional", "Repeatable"};
             case LOCATION -> new String[]{"Type", "X", "Y", "Z", "Name", "Optional", "Repeatable"};
         };
     }
@@ -610,6 +610,36 @@ public class QuestEditorUI {
                             results.add(idStr);
                         }
                     }
+                }
+            }
+        } else if (type == QuestTask.TaskType.OBSERVE) {
+            // OBSERVE targets can be Entities OR Blocks
+            for (EntityType<?> et : BuiltInRegistries.ENTITY_TYPE) {
+                if (et.getCategory() != MobCategory.MISC) {
+                    Identifier id = BuiltInRegistries.ENTITY_TYPE.getKey(et);
+                    if (id != null && (id.toString().contains(q) || et.getDescription().getString().toLowerCase().contains(q))) {
+                        results.add(id.toString());
+                    }
+                }
+            }
+            for (Identifier id : BuiltInRegistries.BLOCK.keySet()) {
+                if (id.toString().contains(q)) {
+                    results.add(id.toString());
+                }
+            }
+        } else if (type == QuestTask.TaskType.OBSERVE) {
+            // OBSERVE targets can be Entities OR Blocks
+            for (EntityType<?> et : BuiltInRegistries.ENTITY_TYPE) {
+                if (et.getCategory() != MobCategory.MISC) {
+                    Identifier id = BuiltInRegistries.ENTITY_TYPE.getKey(et);
+                    if (id != null && (id.toString().contains(q) || et.getDescription().getString().toLowerCase().contains(q))) {
+                        results.add(id.toString());
+                    }
+                }
+            }
+            for (Identifier id : BuiltInRegistries.BLOCK.keySet()) {
+                if (id.toString().contains(q)) {
+                    results.add(id.toString());
                 }
             }
         } else if (type == QuestTask.TaskType.BIOME) {
@@ -819,19 +849,13 @@ public class QuestEditorUI {
         // 1. Draw the background circle for ALL task types
         QuestShapeRenderer.render(QuestShape.CIRCLE, graphics, x, y, iconSize, circleColor, innerColor);
 
-        if (task.getType() == QuestTask.TaskType.KILL) {
+        // Entity Rendering Pass
+        if (task.getType() == QuestTask.TaskType.KILL || task.getType() == QuestTask.TaskType.OBSERVE) {
             Identifier loc = Identifier.tryParse(task.getTargetId());
-            if (loc != null) {
+            if (loc != null && !loc.getPath().equals("air")) {
                 var optHolder = BuiltInRegistries.ENTITY_TYPE.get(loc);
                 if (optHolder.isPresent()) {
-                    Object value = optHolder.get().value();
-                    EntityType<?> type = null;
-
-                    if (value instanceof Optional<?> opt) {
-                        if (opt.isPresent()) type = (EntityType<?>) opt.get();
-                    } else {
-                        type = (EntityType<?>) value;
-                    }
+                    EntityType<?> type = optHolder.get().value();
 
                     if (type != null) {
                         // 1. Manually check cache and create entity
@@ -880,14 +904,21 @@ public class QuestEditorUI {
                             InventoryScreen.extractEntityInInventoryFollowsMouse(
                                     graphics, x, y, x + iconSize, y + iconSize, scale, 0, 0, 0, living
                             );
-                        } else {
-                            // Fallback sword if entity logic fails
-                            renderCenteredItem(graphics, new ItemStack(Items.IRON_SWORD), x, y, iconSize);
+                            return; // Entity rendered successfully
                         }
                     }
                 }
             }
-        } else if (task.getType() != QuestTask.TaskType.CHECKBOX) {
+            
+            // Fallback for KILL tasks if no entity model is available
+            if (task.getType() == QuestTask.TaskType.KILL) {
+                renderCenteredItem(graphics, new ItemStack(Items.IRON_SWORD), x, y, iconSize);
+                return;
+            }
+        }
+
+        // Item/Tag/Special Rendering Pass
+        if (task.getType() != QuestTask.TaskType.CHECKBOX) {
             // For Item, Biome, and Location - Render the item scaled and centered inside the circle
             if (task.getTargetId().startsWith("#")) {
                 // TAG ICON LOGIC: Show the first valid item in the tag as the icon
@@ -922,26 +953,21 @@ public class QuestEditorUI {
     }
 
     public void drawQuestIcon(GuiGraphicsExtractor graphics, Quest quest, int x, int y, int size) {
-        // 1. If using task icon, identify the provider task
         if (quest.isUseTaskIcon() && !quest.getTasks().isEmpty()) {
             QuestTask provider = null;
             for (QuestTask t : quest.getTasks()) {
-                // FIX: Use a state-agnostic check to find the provider.
-                // We prioritize tasks that are Tags, then Checkboxes, then specific Items.
                 if (t.getTargetId().startsWith("#")) {
                     provider = t;
                     break;
                 } else if ((t.getType() == QuestTask.TaskType.CHECKBOX && quest.getLogo() == Items.AIR) ||
-                           (t.getIconStack().getItem() == quest.getLogo())) {
+                        (t.getIconStack().getItem() == quest.getLogo())) {
                     provider = t;
                     break;
                 }
             }
 
-            // 2. Render the specific icon WITHOUT the task container (circle)
             if (provider != null) {
                 if (provider.getTargetId().startsWith("#")) {
-                    // Handle Tag Cycling directly for the Quest Node
                     try {
                         Identifier loc = Identifier.parse(provider.getTargetId().substring(1));
                         TagKey<Item> tagKey = TagKey.create(Registries.ITEM, loc);
@@ -952,7 +978,7 @@ public class QuestEditorUI {
                         if (foundSet != null && foundSet.size() > 0) {
                             int index = (int) ((Util.getMillis() / 1000) % foundSet.size());
                             Item cyclingItem = foundSet.stream().skip(index).findFirst().map(Holder::value).orElse(Items.BARRIER);
-                            graphics.item(new ItemStack(cyclingItem), x, y);
+                            renderCenteredItem(graphics, new ItemStack(cyclingItem), x, y, size);
                             return;
                         }
                     } catch (Exception ignored) {}
@@ -960,17 +986,15 @@ public class QuestEditorUI {
                     drawCheckmark(graphics, x, y, size);
                     return;
                 }
-                // Fallback for standard item tasks
-                graphics.item(new ItemStack(quest.getLogo()), x, y);
+                renderCenteredItem(graphics, new ItemStack(quest.getLogo()), x, y, size);
                 return;
             }
         }
 
-        // 3. Fallback: Manual icon or standard checkmark logic
         if (quest.getLogo() == Items.AIR) {
             drawCheckmark(graphics, x, y, size);
         } else {
-            graphics.item(new ItemStack(quest.getLogo()), x, y);
+            renderCenteredItem(graphics, new ItemStack(quest.getLogo()), x, y, size);
         }
     }
 
@@ -1003,15 +1027,15 @@ public class QuestEditorUI {
     }
 
     private void renderCenteredItem(GuiGraphicsExtractor graphics, ItemStack stack, int x, int y, int iconSize) {
-        // Scale the 16x16 item down to 55% of the circle's diameter to prevent overflow
-        float itemScale = (iconSize / 16f) * 0.55f;
+        // FIX: Balanced scale to 0.65 for consistent visibility without crowding the node borders
+        float itemScale = (iconSize / 16f) * 0.65f;
         // Calculate internal offset to center the scaled item within the iconSize box
         float offset = (iconSize - (16 * itemScale)) / 2f;
 
         graphics.pose().pushMatrix();
         graphics.pose().translate(x + offset, y + offset);
         graphics.pose().scale(itemScale, itemScale);
-        graphics.item(stack, 0, 0);
+        graphics.item(stack, 0, 0); // Always draw at 0,0 relative to translated origin
         graphics.pose().popMatrix();
     }
 

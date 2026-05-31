@@ -22,7 +22,8 @@ public class QuestTask {
         KILL("kill"),
         LOCATION("location"),
         CHECKBOX("checkbox"),
-        BIOME("biome");
+        BIOME("biome"),
+        OBSERVE("observe");
 
         private final String name;
         TaskType(String name) { this.name = name; }
@@ -137,20 +138,6 @@ public class QuestTask {
             if (loc == null) return new ItemStack(Items.BARRIER);
 
             return switch (this.type) {
-                case ITEM -> {
-                    Optional<Holder.Reference<Item>> itemHolder = BuiltInRegistries.ITEM.get(loc);
-                    Item finalItem = Items.AIR;
-                    if (itemHolder.isPresent()) {
-                        Object rawValue = itemHolder.get().value();
-                        if (rawValue instanceof Optional<?> opt) {
-                            // Use isPresent/get to bypass capture ? issues with orElse
-                            finalItem = opt.isPresent() ? (Item) opt.get() : Items.AIR;
-                        } else {
-                            finalItem = (Item) rawValue;
-                        }
-                    }
-                    yield new ItemStack(finalItem == Items.AIR ? Items.BARRIER : finalItem);
-                }
                 case KILL -> {
                     Optional<Holder.Reference<EntityType<?>>> entityHolder = BuiltInRegistries.ENTITY_TYPE.get(loc);
                     if (entityHolder.isPresent()) {
@@ -176,6 +163,37 @@ public class QuestTask {
                     yield new ItemStack(Items.IRON_SWORD); // Generic fallback for modded mobs without eggs
                 }
                 case BIOME -> new ItemStack(Items.GRASS_BLOCK);
+                case ITEM, OBSERVE -> {
+                    // Try to find a direct item/block first
+                    Optional<Item> item = BuiltInRegistries.ITEM.get(loc).map(Holder::value);
+                    if (item.isPresent() && item.get() != Items.AIR) yield new ItemStack(item.get());
+
+                    // FIX: Fallback to Block Registry for technical blocks (Cauldrons, wall signs, etc.)
+                    Optional<Item> blockItem = BuiltInRegistries.BLOCK.get(loc).map(h -> h.value().asItem());
+                    if (blockItem.isPresent() && blockItem.get() != Items.AIR) yield new ItemStack(blockItem.get());
+
+                    // FIX: Handle itemless technical blocks (Liquids, Fire, etc.)
+                    if (loc.getNamespace().equals("minecraft")) {
+                        String path = loc.getPath();
+                        if (path.contains("water")) yield new ItemStack(Items.WATER_BUCKET);
+                        if (path.contains("lava")) yield new ItemStack(Items.LAVA_BUCKET);
+                        if (path.contains("fire")) yield new ItemStack(Items.FLINT_AND_STEEL);
+                        if (path.equals("end_portal")) yield new ItemStack(Items.ENDER_EYE);
+                        if (path.equals("nether_portal")) yield new ItemStack(Items.NETHER_BRICK);
+                    }
+
+                    // If not an item, check if it's an entity (for Spawn Eggs) - useful for OBSERVE mobs
+                    Optional<Holder.Reference<EntityType<?>>> entityHolder = BuiltInRegistries.ENTITY_TYPE.get(loc);
+                    if (entityHolder.isPresent()) {
+                        EntityType<?> type = entityHolder.get().value();
+                        for (Item i : BuiltInRegistries.ITEM) {
+                            if (i instanceof SpawnEggItem egg && egg.getType(ItemStack.EMPTY) == type) {
+                                yield new ItemStack(i);
+                            }
+                        }
+                    }
+                    yield new ItemStack(this.type == TaskType.OBSERVE ? Items.SPYGLASS : Items.BARRIER);
+                }
                 case LOCATION -> new ItemStack(Items.COMPASS);
                 case CHECKBOX -> new ItemStack(Items.PAPER);
             };
@@ -183,6 +201,7 @@ public class QuestTask {
             // Fallback for invalid Identifiers
             return switch (this.type) {
                 case ITEM -> new ItemStack(Items.BARRIER);
+                case OBSERVE -> new ItemStack(Items.SPYGLASS);
                 case KILL -> new ItemStack(Items.IRON_SWORD);
                 case BIOME -> new ItemStack(Items.GRASS_BLOCK);
                 case LOCATION -> new ItemStack(Items.COMPASS);
@@ -230,8 +249,8 @@ public class QuestTask {
                     }
                     yield this.targetId;
                 }
-                case BIOME -> {
-                    String path = loc.getPath().replace('_', ' ');
+                case OBSERVE, BIOME -> {
+                    String path = loc.getPath().substring(loc.getPath().lastIndexOf('/') + 1).replace('_', ' ');
                     StringBuilder sb = new StringBuilder();
                     for (String word : path.toLowerCase().split(" ")) {
                         if (!word.isEmpty())
