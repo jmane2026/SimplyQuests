@@ -77,7 +77,7 @@ public class CanvasHandler {
             if (mouseX >= ix && mouseX <= ix + 20 && mouseY >= b.y + 45 && mouseY <= b.y + 65) {
                 QuestTask t = screen.selectedQuest.getTasks().get(startIdx + i);
                 if (button == 0) {
-                    if (t.getType() == QuestTask.TaskType.ITEM) { screen.submittingTask = t; screen.isItemSubmissionOpen = true; }
+                    if (t.getType() == QuestTask.TaskType.ITEM && t.isConsume()) { screen.submittingTask = t; screen.isItemSubmissionOpen = true; }
                     else if (t.getType() == QuestTask.TaskType.CHECKBOX) {
                         ClientPacketDistributor.sendToServer(new ToggleCheckboxPayload(screen.selectedQuest.getId(), t.getId()));
                         QuestScreen.playClickSound();

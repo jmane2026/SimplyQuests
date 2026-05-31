@@ -211,6 +211,10 @@ public class QuestScreen extends Screen {
     public final Map<String, Quest> questLookup = new HashMap<>();
 
     public void registerQuest(Quest quest) {
+        // FIX: Prevent duplicate rendering by checking if the quest is already registered.
+        // This solves the "multiple badges" issue caused by redundant server syncs.
+        if (this.questLookup.containsKey(quest.getId())) return;
+
         this.allQuests.add(quest);
         this.questLookup.put(quest.getId(), quest);
     }
@@ -317,9 +321,9 @@ public class QuestScreen extends Screen {
 
         // --- LOAD REAL DATA FROM MANAGER ---
         if (this.sidebarEntries.isEmpty()) {
-            var chapterMap = QuestServerEvents.getQuestManager().getChapters();
-
-            var groupDefinitions = QuestServerEvents.getQuestManager().getGroups();
+            // FIX: Pull data from the Manager stored in QuestServerEvents
+            Map<Identifier, QuestChapter> chapterMap = QuestServerEvents.getQuestManager().getChapters();
+            List<QuestGroup> groupDefinitions = QuestServerEvents.getQuestManager().getGroups();
 
             // Use a map to collect root entries and their intended order to avoid TreeMap collisions
             Map<SidebarEntry, Integer> rootOrderMap = new HashMap<>();
@@ -1259,11 +1263,14 @@ public class QuestScreen extends Screen {
             if (hoveredQuest != null && !isInputBlocked() && this.selectedQuest == null && !isPickerOpen()) {
                 // Build detailed path: Group > Chapter > Quest
                 String tooltipText = hoveredQuest.getTitle();
-                var manager = QuestServerEvents.getQuestManager();
+
+                // FIX: Pull from the Manager
+                Map<Identifier, QuestChapter> chapterMap = QuestServerEvents.getQuestManager().getChapters();
                 
                 // Look up the actual Chapter data using the sanitized ID
                 Identifier chId = Identifier.fromNamespaceAndPath("simplyquests", Quest.sanitizePath(hoveredQuest.getChapterName()));
-                QuestChapter chapter = manager.getChapters().get(chId);
+
+                QuestChapter chapter = chapterMap.get(chId);
 
                 if (chapter != null) {
                     String chTitle = (chapter.getTitle() != null && !chapter.getTitle().isEmpty()) ? chapter.getTitle() : chapter.getName();
@@ -1271,7 +1278,7 @@ public class QuestScreen extends Screen {
 
                     if (chapter.getGroupName() != null && !chapter.getGroupName().isEmpty()) {
                         String gId = Quest.sanitizePath(chapter.getGroupName());
-                        grpTitle = manager.getGroups().stream()
+                        grpTitle = QuestServerEvents.getQuestManager().getGroups().stream()
                                 .filter(g -> g.getName().equals(gId))
                                 .map(QuestGroup::getTitle)
                                 .findFirst().orElse("");
@@ -1316,6 +1323,7 @@ public class QuestScreen extends Screen {
 
             boolean isHovered = mouseX >= ix && mouseX <= ix + 20 && mouseY >= iy && mouseY <= iy + 20;
             int innerColor = isHovered ? COL_PANEL_HEADER : COL_UI_BG;
+
             editorUI.drawRewardIcon(graphics, reward, COL_STATE_COMPLETED, innerColor, ix, iy, 20, false);
 
             String amt = reward.getType() == QuestReward.RewardType.COMMAND ? "CMD" : "x" + reward.getCount();
@@ -1383,7 +1391,8 @@ public class QuestScreen extends Screen {
             int innerColor = isHovered ? COL_PANEL_HEADER : COL_UI_BG;
 
             editorUI.drawRewardIcon(graphics, reward, outerColor, innerColor, ix, iy, 20, false);
-
+            renderRewardLabel(graphics, reward, ix, iy, 20);
+            
             if (isHovered) {
                 hoveredLabel = getRewardTooltip(reward);
             }
@@ -1541,9 +1550,14 @@ public class QuestScreen extends Screen {
                 int bx = x + size - (badgeSize / 2) - 2;
                 int by = y - (badgeSize / 2) + 2;
 
-                // FIX: Ensure texture dimensions (8, 8) are passed correctly so the badge doesn't disappear on scaled nodes
-                graphics.blit(RenderPipelines.GUI_TEXTURED, QuestEditorUI.CLAIM_ICON,
-                        bx, by, 0.0f, 0.0f, badgeSize, badgeSize, 8, 8);
+                // FIX: Use matrix scaling to prevent the "top-left crop" error.
+                // We sample exactly 8x8 from the texture and scale it to badgeSize.
+                graphics.pose().pushMatrix();
+                graphics.pose().translate(bx, by);
+                float badgeScale = badgeSize / 8.0f;
+                graphics.pose().scale(badgeScale, badgeScale);
+                graphics.blit(RenderPipelines.GUI_TEXTURED, QuestEditorUI.CLAIM_ICON, 0, 0, 0.0f, 0.0f, 8, 8, 8, 8);
+                graphics.pose().popMatrix();
             }
         }
 
@@ -2403,7 +2417,16 @@ public class QuestScreen extends Screen {
                 mouseY >= xBtnTop && mouseY <= xBtnBottom;
 
         int xColor = isHoveringX ? COL_ERROR : COL_UI_BORDER;
-        graphics.centeredText(this.font, Component.literal("X"), x + panelWidth - 11, y + 6, xColor);
+        int closeBtnSize = 10;
+        int closeX = xBtnLeft + (xBtnRight - xBtnLeft - closeBtnSize) / 2;
+        int closeY = xBtnTop + (xBtnBottom - xBtnTop - closeBtnSize) / 2;
+        
+        // FIX: Scale the 16x16 close icon to 10x10 screen pixels without cropping
+        graphics.pose().pushMatrix();
+        graphics.pose().translate(closeX, closeY);
+        graphics.pose().scale(closeBtnSize / 16.0f, closeBtnSize / 16.0f);
+        graphics.blit(RenderPipelines.GUI_TEXTURED, QuestEditorUI.CLOSE_ICON, 0, 0, 0.0f, 0.0f, 16, 16, 16, 16, xColor);
+        graphics.pose().popMatrix();
 
         // 3. Header Divider
         graphics.fill(x, y + 20, x + panelWidth, y + 21, COL_UI_BORDER);
@@ -4734,33 +4757,43 @@ public class QuestScreen extends Screen {
      * Internal helper to refresh the claimable status cache.
      * Called only when player data actually changes.
      */
-    private void updateClaimableCache() {
-        var manager = QuestServerEvents.getQuestManager();
-        if (manager == null) {
+    public static void updateClaimableCache() {
+        // FIX: Pull from the Manager
+        Map<Identifier, QuestChapter> chapterMap = QuestServerEvents.getQuestManager().getChapters();
+
+        if (chapterMap == null || chapterMap.isEmpty()) {
             anyClaimableCache = false;
             anyUnclaimedGeneralCache = false;
             return;
         }
 
-        anyClaimableCache = false;
-        anyUnclaimedGeneralCache = false;
+        // Temporary variables to hold calculation
+        boolean foundClaimable = false;
+        boolean foundUnclaimed = false;
 
-        for (Quest q : manager.getAllQuests()) {
-            if (SimplyQuestsClientPacketHandler.CLIENT_COMPLETED_QUESTS.contains(q.getId())) {
-                for (QuestReward r : q.getRewards()) {
-                    boolean claimed = SimplyQuestsClientPacketHandler.CLIENT_CLAIMED_REWARDS.contains(r.getId());
-                    if (!claimed) {
-                        anyUnclaimedGeneralCache = true;
-                        // "Claim All" button logic (Mandatory only)
-                        if (r.getSubRewards().isEmpty()) {
-                            anyClaimableCache = true;
+        // Iterate through the values of the Map (the QuestChapter objects)
+        for (QuestChapter chapter : chapterMap.values()) {
+            for (Quest quest : chapter.getQuests()) {
+                if (SimplyQuestsClientPacketHandler.CLIENT_COMPLETED_QUESTS.contains(quest.getId())) {
+                    for (QuestReward reward : quest.getRewards()) {
+                        boolean claimed = SimplyQuestsClientPacketHandler.CLIENT_CLAIMED_REWARDS.contains(reward.getId());
+                        if (!claimed) {
+                            foundUnclaimed = true;
+                            // "Claim All" logic applies ONLY to non-choice rewards
+                            if (reward.getSubRewards().isEmpty()) {
+                                foundClaimable = true;
+                            }
                         }
                     }
                 }
+                if (foundClaimable && foundUnclaimed) break;
             }
-            // Exit early if both caches are satisfied
-            if (anyClaimableCache && anyUnclaimedGeneralCache) return;
+            if (foundClaimable && foundUnclaimed) break;
         }
+
+        // Apply the results to the static caches
+        anyClaimableCache = foundClaimable;
+        anyUnclaimedGeneralCache = foundUnclaimed;
     }
 
     private boolean checkPermissions() {

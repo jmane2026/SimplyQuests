@@ -84,7 +84,8 @@ public class EditorHandler {
         }
 
         String field = ui.getFieldAt(mouseY, py);
-        if (field != null && QuestEditorUI.isMouseOver(mouseX, mouseY, px + 235, ui.getRowY(field, py), 55, 18)) {
+        // FIX: Increased button width to 65 to match renderQuestEditor's editBtnRightEdge logic
+        if (field != null && QuestEditorUI.isMouseOver(mouseX, mouseY, px + 235, ui.getRowY(field, py), 65, 18)) {
             ui.closePicker();
             switch (field) {
                 case "Optional" -> task.setOptional(!task.isOptional());
@@ -101,7 +102,8 @@ public class EditorHandler {
                 }
             }
             QuestScreen.playClickSound();
-        } else { ui.closePicker(); }
+            return true;
+        }
         return true;
     }
 
@@ -173,13 +175,15 @@ public class EditorHandler {
                     case "Dependencies" -> { ui.isDependencyPickerOpen = true; ui.isRemoveDependencyMode = false; }
                 }
                 QuestScreen.playClickSound();
-            } else if (field.equals("Dependencies")) {
+                return true;
+            } else if (field != null && field.equals("Dependencies")) {
                 if (QuestEditorUI.isMouseOver(mouseX, mouseY, editBtnLeft, rowY, 55, 18)) {
                     ui.closePicker(); ui.isDependencyPickerOpen = true; ui.isRemoveDependencyMode = false; QuestScreen.playClickSound();
                 } else if (QuestEditorUI.isMouseOver(mouseX, mouseY, editBtnLeft - 50, rowY, 55, 18)) {
                     ui.closePicker(); ui.isDependencyPickerOpen = true; ui.isRemoveDependencyMode = true; QuestScreen.playClickSound();
                 }
-            } else { ui.closePicker(); }
+                return true;
+            }
         }
         return true;
     }
@@ -243,7 +247,7 @@ public class EditorHandler {
         }
 
         String field = ui.getFieldAt(mouseY, py);
-        if (field != null && QuestEditorUI.isMouseOver(mouseX, mouseY, px + 235, ui.getRowY(field, py), 55, 18)) {
+        if (field != null && QuestEditorUI.isMouseOver(mouseX, mouseY, px + 235, ui.getRowY(field, py), 65, 18)) {
             ui.closePicker();
             switch(field) {
                 case "Type" -> ui.isTypePickerOpen = true;
@@ -252,7 +256,8 @@ public class EditorHandler {
                 case "Command" -> { ui.searchQuery = screen.rewardToModify.getCommand(); ui.isNameOpen = true; setupText(ui); }
             }
             QuestScreen.playClickSound();
-        } else { ui.closePicker(); }
+            return true;
+        }
         return true;
     }
 

@@ -38,6 +38,7 @@ public class QuestEditorUI {
     public static final Identifier CLAIM_ICON = Identifier.fromNamespaceAndPath("simplyquests", "textures/gui/shapes/claim.png");
     public static final Identifier CLAIM_ALL_ICON = Identifier.fromNamespaceAndPath("simplyquests", "textures/gui/claim_all.png");
     public static final Identifier FLOW_ARROW = Identifier.fromNamespaceAndPath("simplyquests", "textures/gui/flow_arrow.png");
+    public static final Identifier CLOSE_ICON = Identifier.fromNamespaceAndPath("simplyquests", "textures/gui/close.png");
 
     private final String[] labels = {"Icon", "Title", "Sub-Title", "Description", "Shape", "Size", "Optional", "Repeatable", "Dependencies"};
 
@@ -102,14 +103,30 @@ public class QuestEditorUI {
         int dividerX = panelX + 90;
         int valueX = dividerX + 10;
         int rowHeight = 22;
-        int startY = panelY + 20;
+        int startY = panelY + 30; // Standardized to match Task/Reward editors
 
-        // --- 2. VERTICAL DIVIDER (Full Height) ---
+        // --- 1b. HEADER ---
+        graphics.text(font, Component.literal("Quest Editor"), leftMargin, panelY + 10, QuestScreen.COL_TEXT);
+
+        // Live Preview Node in Header (Top Right)
+        int stateColor = QuestScreen.getStateColor(quest.getState());
+        QuestShapeRenderer.render(quest.getShape(), graphics, panelX + panelWidth - 35, panelY + 4, 16, stateColor, QuestScreen.COL_UI_BG);
+        graphics.pose().pushMatrix();
+        graphics.pose().translate(panelX + panelWidth - 35 + 8.0f, panelY + 4 + 8.0f);
+        graphics.pose().scale(0.65f, 0.65f);
+        drawQuestIcon(graphics, quest, -8, -8, 16);
+        graphics.pose().popMatrix();
+
+        graphics.horizontalLine(panelX, panelX + panelWidth - 1, panelY + 22, QuestScreen.COL_UI_BORDER);
+
+        // --- 2. DIVIDERS ---
         // Spans from startY to the button area at the bottom
-        int padding = 1;
-        int lineTop = panelY;
-        int lineBottom = panelY + panelHeight - 1; // Extend to the bottom window border
-        graphics.verticalLine(dividerX, lineTop, lineBottom, QuestScreen.COL_PANEL_DIVIDER);
+        int footerDividerY = panelY + panelHeight - 24;
+
+        // FIX: Vertical line starts at the header divider (22) and ends at the footer divider
+        graphics.verticalLine(dividerX, panelY + 22, footerDividerY, QuestScreen.COL_UI_BORDER);
+        // Horizontal footer line
+        graphics.horizontalLine(panelX, panelX + panelWidth - 1, footerDividerY, QuestScreen.COL_UI_BORDER);
 
         // --- 3. RENDER ROWS ---
         int editBtnWidth = 45;
@@ -133,7 +150,11 @@ public class QuestEditorUI {
                 drawButton(graphics, mouseX, mouseY, editBtnLeft, rowY, editBtnWidth, 14, "Toggle", QuestScreen.COL_BUTTON_BASE);
                 graphics.text(font, value, valueX, rowY + 2, valueColor);
             } else if (labels[i].equals("Icon")) {
-                drawQuestIcon(graphics, quest, valueX, rowY - 2, 16);
+                graphics.pose().pushMatrix();
+                graphics.pose().translate(valueX + 8.0f, rowY - 2 + 8.0f);
+                graphics.pose().scale(0.65f, 0.65f);
+                drawQuestIcon(graphics, quest, -8, -8, 16);
+                graphics.pose().popMatrix();
                 // FIX: Dynamically determine the label for the Icon row
                 String itemName = "None";
                 if (quest.isUseTaskIcon()) {
@@ -264,8 +285,13 @@ public class QuestEditorUI {
                     graphics.pose().pushMatrix();
                     graphics.pose().scale(scale, scale);
 
-                    // FIX: Use drawQuestIcon helper to support cycling tag icons in the dependency list
-                    drawQuestIcon(graphics, q, (int)((b.x() + 4) / scale), iconY, 16);
+                    // Scale the item inside the list row for better visibility
+                    graphics.pose().pushMatrix();
+                    graphics.pose().translate(((b.x() + 4) / scale) + 8.0f, iconY + 8.0f);
+                    graphics.pose().scale(0.65f, 0.65f);
+                    drawQuestIcon(graphics, q, -8, -8, 16);
+                    graphics.pose().popMatrix();
+
                     // Centered text vertical alignment (rowY + 3)
                     graphics.text(font, q.getTitle(), (int)((b.x() + 18) / scale), (int)((rowY + 3) / scale), QuestScreen.COL_TEXT);
 
@@ -350,7 +376,7 @@ public class QuestEditorUI {
 
     // Helper to identify which field was clicked
     public String getFieldAt(double mouseY, int panelY) {
-        int startY = (isTaskMode || isRewardModeOpen) ? (panelY + 28) : (panelY + 18);
+        int startY = panelY + 30; // FIX: Unified with standardized render startY
         int relativeY = (int) (mouseY - startY);
 
         String[] activeLabels = isRewardModeOpen ? getRewardLabels(currentRewardType) : (isTaskMode ? getTaskLabels(currentTaskType) : this.labels);
@@ -411,8 +437,13 @@ public class QuestEditorUI {
         // Draw the derived task icon in the header
         drawTaskIcon(graphics, task, task.getCurrentAmount(), QuestScreen.COL_UI_BG, panelX + panelWidth - 35, panelY + 4, mouseX, mouseY, 16);
 
-        graphics.horizontalLine(panelX + 5, panelX + panelWidth - 5, panelY + 22, QuestScreen.COL_PANEL_DIVIDER);
-        graphics.verticalLine(dividerX, panelY, panelY + panelHeight - 1, QuestScreen.COL_PANEL_DIVIDER);
+        // Layout Dividers
+        int footerDividerY = panelY + panelHeight - 24;
+        graphics.horizontalLine(panelX, panelX + panelWidth - 1, panelY + 22, QuestScreen.COL_UI_BORDER);
+        graphics.horizontalLine(panelX, panelX + panelWidth - 1, footerDividerY, QuestScreen.COL_UI_BORDER);
+
+        // FIX: Start vertical line at the header divider
+        graphics.verticalLine(dividerX, panelY + 22, footerDividerY, QuestScreen.COL_UI_BORDER);
 
         String pendingTaskOverlay = null;
         int overlayX = 0;
@@ -522,23 +553,27 @@ public class QuestEditorUI {
         List<String> results = new ArrayList<>();
 
         if (type == QuestTask.TaskType.ITEM) {
-            for (Item item : BuiltInRegistries.ITEM) {
-                Identifier id = BuiltInRegistries.ITEM.getKey(item);
-                if (id != null) {
-                    String idStr = id.toString().toLowerCase();
-                    String name = item.getName(item.getDefaultInstance()).getString().toLowerCase();
-                    if (idStr.contains(q) || name.contains(q)) {
-                        results.add(idStr);
+            if (q.startsWith("#")) {
+                // TAG SEARCH MODE: Only show tags if the user explicitly starts with #
+                String tagQuery = q.substring(1);
+                BuiltInRegistries.ITEM.getTags()
+                        .map(tag -> tag.key().location().toString())
+                        .filter(path -> path.contains(tagQuery))
+                        .map(path -> "#" + path)
+                        .forEach(results::add);
+            } else {
+                // ITEM SEARCH MODE: Standard item lookup
+                for (Item item : BuiltInRegistries.ITEM) {
+                    Identifier id = BuiltInRegistries.ITEM.getKey(item);
+                    if (id != null) {
+                        String idStr = id.toString().toLowerCase();
+                        String name = item.getName(item.getDefaultInstance()).getString().toLowerCase();
+                        if (idStr.contains(q) || name.contains(q)) {
+                            results.add(idStr);
+                        }
                     }
                 }
             }
-
-            // Add Tags to the results
-            BuiltInRegistries.ITEM.getTags()
-                    .map(tag -> "#" + tag.key().location().toString())
-                    .filter(tagId -> tagId.contains(q))
-                    .forEach(results::add);
-
         } else if (type == QuestTask.TaskType.KILL) {
             for (EntityType<?> et : BuiltInRegistries.ENTITY_TYPE) {
                 // Filter out non-living misc entities (boats, arrows, etc.)
@@ -580,8 +615,14 @@ public class QuestEditorUI {
         String headerText = "Reward Editor";
         graphics.text(font, Component.literal(headerText), leftMargin, panelY + 10, QuestScreen.COL_TEXT);
         drawRewardIcon(graphics, reward, QuestScreen.COL_STATE_COMPLETED, QuestScreen.COL_UI_BG, panelX + panelWidth - 35, panelY + 4, 16, false);
-        graphics.horizontalLine(panelX + 5, panelX + panelWidth - 5, panelY + 22, QuestScreen.COL_PANEL_DIVIDER);
-        graphics.verticalLine(dividerX, panelY, panelY + panelHeight - 1, QuestScreen.COL_PANEL_DIVIDER);
+
+        // Layout Dividers
+        int footerDividerY = panelY + panelHeight - 24;
+        graphics.horizontalLine(panelX, panelX + panelWidth - 1, panelY + 22, QuestScreen.COL_UI_BORDER);
+        graphics.horizontalLine(panelX, panelX + panelWidth - 1, footerDividerY, QuestScreen.COL_UI_BORDER);
+
+        // FIX: Start vertical line at the header divider
+        graphics.verticalLine(dividerX, panelY + 22, footerDividerY, QuestScreen.COL_UI_BORDER);
 
         String[] labels = reward.getType() == QuestReward.RewardType.ITEM ? new String[]{"Type", "Target", "Quantity"} :
                 (reward.getType() == QuestReward.RewardType.XP ? new String[]{"Type", "Quantity"} : new String[]{"Type", "Command"});
@@ -886,9 +927,14 @@ public class QuestEditorUI {
         int scaledSize = Math.max(1, (int) (size * paddingFactor));
         int offset = (size - scaledSize) / 2;
 
-        // Using the 10-parameter blit signature to scale the texture into the padded area
-        graphics.blit(RenderPipelines.GUI_TEXTURED, CHECKMARK_TEXTURE, x + offset, y + offset, 
-                0.0f, 0.0f, scaledSize, scaledSize, scaledSize, scaledSize);
+        // FIX: Sample the full 16x16 checkmark region and use Matrix scale for the padding
+        graphics.pose().pushMatrix();
+        graphics.pose().translate(x + offset, y + offset);
+        float checkScale = scaledSize / 16.0f;
+        graphics.pose().scale(checkScale, checkScale);
+        graphics.blit(RenderPipelines.GUI_TEXTURED, CHECKMARK_TEXTURE, 0, 0, 
+                0.0f, 0.0f, 16, 16, 16, 16);
+        graphics.pose().popMatrix();
     }
 
     public String toTitleCase(String input) {
@@ -920,7 +966,7 @@ public class QuestEditorUI {
         int index = getIndexForField(fieldName);
         if (index == -1) return -1;
 
-        int startY = (isTaskMode || isRewardModeOpen) ? (panelY + 28) : (panelY + 18);
+        int startY = panelY + 30; // FIX: Unified with standardized render startY
         int rowH = (isTaskMode || isRewardModeOpen) ? 26 : 22;
         return startY + (index * rowH);
     }
@@ -1277,6 +1323,13 @@ public class QuestEditorUI {
 
         // Scissor the text area to prevent highlight/text overflow
         graphics.enableScissor(boxX + 5, contentY, boxX + boxW - 5, boxY + boxH - 25);
+
+        // FIX: Handle cursor rendering when the editor is completely empty
+        if (this.searchQuery.isEmpty()) {
+            if (Util.getMillis() / 500 % 2 == 0) {
+                graphics.fill(boxX + 10, contentY + 5, boxX + 11, contentY + 5 + this.font.lineHeight, QuestScreen.COL_TEXT);
+            }
+        }
 
         int nextSearchIndex = 0;
         for (int i = 0; i < lines.size(); i++) {

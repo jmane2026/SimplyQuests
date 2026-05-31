@@ -33,6 +33,11 @@ public class InventoryQuestButtonHandler {
             int screenW = inventory.width;
             int screenH = inventory.height;
 
+            // FIX: Check if the button already exists in the listeners list.
+            // This prevents stacking multiple buttons if Init.Post fires multiple times.
+            boolean alreadyExists = event.getListenersList().stream().anyMatch(l -> l instanceof QuestBookButton);
+            if (alreadyExists) return;
+
             // Calculate position relative to center, but force a minimum of 6px from the top-left
             int x = Math.max(6, Math.min((screenW / 2) + configX, screenW - 22));
             int y = Math.max(6, Math.min((screenH / 2) + configY, screenH - 22));
