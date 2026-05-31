@@ -86,5 +86,17 @@ public class QuestNetworkRegistry {
                 SyncImagePayload.STREAM_CODEC,
                 isClient ? SimplyQuestsClientPacketHandler::handleSyncImage : (p, c) -> {}
         );
+
+        registrar.playToServer(
+                UploadImagePayload.TYPE,
+                UploadImagePayload.STREAM_CODEC,
+                ServerPayloadHandler::handleUploadImage
+        );
+
+        registrar.playToServer(
+                DeleteImagePayload.TYPE,
+                DeleteImagePayload.STREAM_CODEC,
+                ServerPayloadHandler::handleDeleteImage
+        );
     }
 }

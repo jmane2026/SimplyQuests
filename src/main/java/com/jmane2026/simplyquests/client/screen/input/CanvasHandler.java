@@ -120,8 +120,35 @@ public class CanvasHandler {
     public static boolean handleCanvas(QuestScreen screen, double mouseX, double mouseY, int button) {
         String activeChapterId = screen.selectedChapter.getId();
         if (button == 0) {
+            // Pass 1: Select Images (Foreground to Background)
+            for (int i = screen.allCanvasImages.size() - 1; i >= 0; i--) {
+                QuestCanvasImage ci = screen.allCanvasImages.get(i);
+                if (ci.getChapterName().equals(activeChapterId) && screen.isMouseOverImage(mouseX, mouseY, ci)) {
+                    screen.selectedCanvasImage = ci;
+                    screen.selectedQuest = null;
+                    QuestScreen.playClickSound();
+                    return true;
+                }
+            }
+            screen.selectedCanvasImage = null; // Deselect if clicking empty space
+
             for (Quest q : screen.allQuests) if (q.getChapterName().equals(activeChapterId) && screen.isMouseOverNode(mouseX, mouseY, q)) { screen.selectedQuest = q; QuestScreen.playClickSound(); return true; }
         } else if (button == GLFW.GLFW_MOUSE_BUTTON_MIDDLE && QuestGlobalState.isEditModeEnabled) {
+            // Pick up Canvas Images
+            for (int i = screen.allCanvasImages.size() - 1; i >= 0; i--) {
+                QuestCanvasImage ci = screen.allCanvasImages.get(i);
+                if (ci.getChapterName().equals(activeChapterId) && screen.isMouseOverImage(mouseX, mouseY, ci)) {
+                    screen.movingCanvasImage = ci;
+                    double absoluteCenterX = screen.width / 2.0;
+                    double absoluteCenterY = screen.height / 2.0;
+                    double worldMouseX = screen.offsetX + ((mouseX - absoluteCenterX) / screen.zoom);
+                    double worldMouseY = screen.offsetY + ((mouseY - absoluteCenterY) / screen.zoom);
+                    screen.dragOffsetX = worldMouseX - ci.getX();
+                    screen.dragOffsetY = worldMouseY - ci.getY();
+                    QuestScreen.playClickSound();
+                    return true;
+                }
+            }
             // Pick up Quest Nodes
             for (Quest q : screen.allQuests) {
                 if (q.getChapterName().equals(activeChapterId) && screen.isMouseOverNode(mouseX, mouseY, q)) {
@@ -148,6 +175,13 @@ public class CanvasHandler {
                 }
             }
         } else if (button == 1 && QuestGlobalState.isEditModeEnabled) {
+            for (int i = screen.allCanvasImages.size() - 1; i >= 0; i--) {
+                QuestCanvasImage ci = screen.allCanvasImages.get(i);
+                if (ci.getChapterName().equals(activeChapterId) && screen.isMouseOverImage(mouseX, mouseY, ci)) {
+                    screen.openImageContextMenu(mouseX, mouseY, ci);
+                    return true;
+                }
+            }
             for (Quest q : screen.allQuests) if (q.getChapterName().equals(activeChapterId) && screen.isMouseOverNode(mouseX, mouseY, q)) { screen.openQuestContextMenu(mouseX, mouseY, q); return true; }
             for (CanvasText ct : screen.allCanvasTexts) if (ct.getChapterName().equals(activeChapterId) && screen.isMouseOverText(mouseX, mouseY, ct)) { screen.openTextContextMenu(mouseX, mouseY, ct); return true; }
             screen.openCanvasContextMenu(mouseX, mouseY);
@@ -261,7 +295,7 @@ public class CanvasHandler {
     public static boolean handleMoveModes(QuestScreen screen, double mouseX, double mouseY, int button) {
         // PRIORITY: If we are moving ANYTHING, this method must return true to block all other inputs
         if (screen.movingQuest == null && screen.movingCanvasText == null &&
-                screen.movingTask == null && screen.movingReward == null &&
+                screen.movingTask == null && screen.movingReward == null && screen.movingCanvasImage == null &&
                 screen.movingSidebarGroup == null && screen.movingSidebarChapter == null) {
             return false;
         }
@@ -269,6 +303,7 @@ public class CanvasHandler {
         if (button == 0) {
             if (screen.movingQuest != null) screen.dropQuest(mouseX, mouseY);
             else if (screen.movingCanvasText != null) screen.dropText(mouseX, mouseY);
+            else if (screen.movingCanvasImage != null) screen.dropImage(mouseX, mouseY);
             else if (screen.movingTask != null) screen.dropTask(mouseX, mouseY);
             else if (screen.movingReward != null) screen.dropReward(mouseX, mouseY);
             else if (screen.movingSidebarGroup != null) screen.dropSidebarGroup(mouseX, mouseY);
@@ -277,6 +312,7 @@ public class CanvasHandler {
         }
         screen.movingQuest = null;
         screen.movingCanvasText = null;
+        screen.movingCanvasImage = null;
         screen.movingTask = null;
         screen.movingReward = null;
         screen.movingSidebarGroup = null;

@@ -31,11 +31,14 @@ import net.minecraft.world.item.Items;
 import net.neoforged.neoforge.client.network.ClientPacketDistributor;
 import org.joml.Vector2f;
 import org.lwjgl.glfw.GLFW;
+import org.lwjgl.util.tinyfd.TinyFileDialogs;
+import org.lwjgl.PointerBuffer;
+import org.lwjgl.system.MemoryStack;
 import com.mojang.blaze3d.platform.NativeImage;
 import net.minecraft.client.renderer.RenderPipelines;
 
-import java.io.ByteArrayInputStream;
 import java.awt.*;
+import java.io.ByteArrayInputStream;
 import java.io.File;
 import java.nio.file.Files;
 import java.util.*;
@@ -43,8 +46,21 @@ import java.util.List;
 
 public class QuestScreen extends Screen {
     public final List<CanvasText> allCanvasTexts = new ArrayList<>();
-    private final List<QuestCanvasImage> allCanvasImages = new ArrayList<>();
+    public final List<QuestCanvasImage> allCanvasImages = new ArrayList<>();
     private static final Map<String, Identifier> DYNAMIC_IMAGES = new HashMap<>();
+    private static final Set<String> PENDING_REQUESTS = new HashSet<>();
+    
+    // --- IMAGE MANIPULATION STATE ---
+    public QuestCanvasImage selectedCanvasImage = null;
+    public enum ManipulationMode { NONE, SCALE, ROTATE, ALPHA }
+    public ManipulationMode currentImageMode = ManipulationMode.NONE;
+    public double initialRotateAngle = 0;
+    public double initialImageRotation = 0;
+    public boolean isDraggingAlphaSlider = false;
+    public boolean isDraggingScaleHandle = false;
+    public boolean isDraggingRotateHandle = false;
+    public int scaleHandleIndex = -1; // 0-7: TL, T, TR, R, BR, B, BL, L
+    private double startX, startY, startW, startH;
 
     public double offsetX = 0;
     public double offsetY = 0;
@@ -123,6 +139,7 @@ public class QuestScreen extends Screen {
     public boolean isContextMenuOpen = false;
     public boolean isSideBarContextMenu = false;
     public boolean isSideBarEntryMenu = false;
+    public boolean isImageContextMenu = false;
     public boolean isTextContextMenu = false;
     public boolean isTextEditorOpen = false;
     public boolean isSettingsOpen = false;
@@ -143,6 +160,7 @@ public class QuestScreen extends Screen {
     public CanvasText editingCanvasText = null;
     public CanvasText originalCanvasText = null;
     public CanvasText movingCanvasText = null;
+    public QuestCanvasImage movingCanvasImage = null;
     public double contextMenuX;
     public double contextMenuY;
 
@@ -482,12 +500,24 @@ public class QuestScreen extends Screen {
     @Override
     public void extractRenderState(GuiGraphicsExtractor graphics, int mouseX, int mouseY, float partialTick) {
         super.extractRenderState(graphics, mouseX, mouseY, partialTick);
+
+        // Define screen center early so it's available for all manipulation and matrix math
+        float absoluteCenterX = (float) (this.width / 2.0);
+        float absoluteCenterY = (float) (this.height / 2.0);
+
         boolean hoveringClaimAll = false;
         boolean isSubEditorOpen = isTaskEditorOpen || isRewardEditorOpen;
 
         Minecraft mc = Minecraft.getInstance();
         long windowHandle = GLFW.glfwGetCurrentContext();
         boolean isLeftButtonDown = GLFW.glfwGetMouseButton(windowHandle, GLFW.GLFW_MOUSE_BUTTON_1) == GLFW.GLFW_PRESS;
+
+        if (!isLeftButtonDown) {
+            this.isDraggingAlphaSlider = false;
+            this.isDraggingScaleHandle = false;
+            this.isDraggingRotateHandle = false;
+            this.scaleHandleIndex = -1;
+        }
 
         // Handle Slider Dragging logic
         if (this.isDraggingSizeSlider && this.isEditorOpen && this.questToModify != null) {
@@ -585,6 +615,88 @@ public class QuestScreen extends Screen {
             }
         }
 
+        // --- LIVE IMAGE MANIPULATION ---
+        if (isLeftButtonDown && selectedCanvasImage != null) {
+            double worldMouseX = this.offsetX + ((mouseX - absoluteCenterX) / this.zoom);
+            double worldMouseY = this.offsetY + ((mouseY - absoluteCenterY) / this.zoom);
+            double angle = -selectedCanvasImage.getRotation();
+
+            if (isDraggingScaleHandle) {
+                // FIX: Calculate mouse position relative to the FIXED startX/startY captured at the beginning of the drag.
+                // This breaks the feedback loop that was causing the "jumping" behavior.
+                double dx = worldMouseX - startX;
+                double dy = worldMouseY - startY;
+                double localMouseX = dx * Math.cos(angle) - dy * Math.sin(angle);
+                double localMouseY = dx * Math.sin(angle) + dy * Math.cos(angle);
+
+                double newW = startW;
+                double newH = startH;
+                double localShiftX = 0;
+                double localShiftY = 0;
+
+                // Snapping local mouse coordinates to grid
+                double snappedLocalX = Math.round(localMouseX / GRID_SNAP) * GRID_SNAP;
+                double snappedLocalY = Math.round(localMouseY / GRID_SNAP) * GRID_SNAP;
+
+                // 1. Handle Width and Horizontal origin shift
+                if (scaleHandleIndex == 0 || scaleHandleIndex == 7 || scaleHandleIndex == 6) { // Left-side handles (TL, L, BL)
+                    newW = Math.max(GRID_SNAP, startW - snappedLocalX);
+                    localShiftX = startW - newW;
+                } else if (scaleHandleIndex == 2 || scaleHandleIndex == 3 || scaleHandleIndex == 4) { // Right-side handles (TR, R, BR)
+                    newW = Math.max(GRID_SNAP, snappedLocalX);
+                }
+
+                // 2. Handle Height and Vertical origin shift
+                if (scaleHandleIndex == 0 || scaleHandleIndex == 1 || scaleHandleIndex == 2) { // Top-side handles (TL, T, TR)
+                    newH = Math.max(GRID_SNAP, startH - snappedLocalY);
+                    localShiftY = startH - newH;
+                } else if (scaleHandleIndex == 4 || scaleHandleIndex == 5 || scaleHandleIndex == 6) { // Bottom-side handles (BR, B, BL)
+                    newH = Math.max(GRID_SNAP, snappedLocalY);
+                }
+
+                // 3. Apply local shifts back to World Space X/Y
+                // Since the image is rotated, a "local left" shift must be rotated by the image's angle to find the new world X/Y
+                double worldShiftX = localShiftX * Math.cos(-angle) - localShiftY * Math.sin(-angle);
+                double worldShiftY = localShiftX * Math.sin(-angle) + localShiftY * Math.cos(-angle);
+
+                selectedCanvasImage.setX(startX + worldShiftX);
+                selectedCanvasImage.setY(startY + worldShiftY);
+                selectedCanvasImage.setWidth(newW);
+                selectedCanvasImage.setHeight(newH);
+
+            } else if (isDraggingRotateHandle) {
+                // Rotation around the center of the image
+                double centerX = selectedCanvasImage.getX() + selectedCanvasImage.getWidth() / 2.0;
+                double centerY = selectedCanvasImage.getY() + selectedCanvasImage.getHeight() / 2.0;
+                
+                double currentAngle = Math.atan2(worldMouseY - centerY, worldMouseX - centerX);
+
+                // Normalize to 0-360 steps if desired, otherwise free rotate
+                float finalRotation = (float)(initialImageRotation + (currentAngle - initialRotateAngle));
+                selectedCanvasImage.setRotation(finalRotation);
+
+            } else if (isDraggingAlphaSlider && currentImageMode == ManipulationMode.ALPHA) {
+                // Transform world mouse into Image-Local Space for alpha (relative to image origin)
+                double dx = worldMouseX - selectedCanvasImage.getX();
+                double dy = worldMouseY - selectedCanvasImage.getY();
+                double localX = dx * Math.cos(angle) - dy * Math.sin(angle);
+
+                // FIX: Use a fixed 0.8 scale so dragging matches the visual scale on the grid
+                double relX = worldMouseX - selectedCanvasImage.getX();
+                double btnScale = 0.8;
+                // Buttons are at -25 offset. We translate the coordinate back to the local button space.
+                double hitX = (relX + 25) / btnScale;
+
+                float newAlpha = (float)((hitX + 110) / 100.0);
+                selectedCanvasImage.setAlpha(Math.max(0.05f, Math.min(1.0f, newAlpha)));
+            }
+            
+            // Save changes to server frequently while dragging (throttled by the payload handler)
+            if (Util.getMillis() % 200 < 20) {
+                saveChapterData(selectedCanvasImage.getChapterName());
+            }
+        }
+
         if (this.isDraggingPopup) {
             if (isLeftButtonDown
                     && !this.isContextMenuOpen
@@ -625,7 +737,11 @@ public class QuestScreen extends Screen {
                 && !this.suppressPanning
                 && !this.isEditorOpen
                 && !this.isTextEditorOpen
-                && !this.isSettingsOpen) {
+                && !this.isSettingsOpen
+                && !this.isDraggingScaleHandle
+                && this.movingCanvasImage == null
+                && !this.isDraggingRotateHandle
+                && !this.isDraggingAlphaSlider) {
 
             double currentX = mc.mouseHandler.xpos();
             double currentY = mc.mouseHandler.ypos();
@@ -657,10 +773,6 @@ public class QuestScreen extends Screen {
         // 2. BEGIN THE MATRIX SCALE PASS
         graphics.pose().pushMatrix();
 
-        // 1. Calculate the center of the absolute screen, ignoring the sidebar entirely!
-        float absoluteCenterX = (float) (this.width / 2.0);
-        float absoluteCenterY = (float) (this.height / 2.0);
-
         // 2. Move the matrix origin to the absolute middle of the screen
         graphics.pose().translation(new Vector2f(absoluteCenterX, absoluteCenterY));
 
@@ -674,23 +786,6 @@ public class QuestScreen extends Screen {
 
         // 5. Render your quest tree nodes onto the grid
         renderQuestTree(graphics, mouseX, mouseY, partialTick);
-
-        if (this.movingCanvasText != null) {
-            double worldMouseX = this.offsetX + ((mouseX - absoluteCenterX) / this.zoom);
-            double worldMouseY = this.offsetY + ((mouseY - absoluteCenterY) / this.zoom);
-
-            // FIX: Apply drag offsets to anchor the move to the initiation point
-            double targetX = worldMouseX - this.dragOffsetX;
-            double targetY = worldMouseY - this.dragOffsetY;
-            double snappedX = Math.round(targetX / GRID_SNAP) * GRID_SNAP;
-            double snappedY = Math.round(targetY / GRID_SNAP) * GRID_SNAP;
-
-            graphics.pose().pushMatrix();
-            graphics.pose().translate((float) snappedX, (float) snappedY);
-            graphics.pose().scale(this.movingCanvasText.getScale(), this.movingCanvasText.getScale());
-            graphics.text(this.font, Component.literal(this.movingCanvasText.getText()), 0, 0, (COL_TEXT & 0x00FFFFFF) | 0x80000000);
-            graphics.pose().popMatrix();
-        }
 
         // --- AUTO-PAGINATION WHILE MOVING TASK ---
         if (this.movingTask != null && this.selectedQuest != null) {
@@ -1457,17 +1552,29 @@ public class QuestScreen extends Screen {
         String activeChapterId = this.selectedChapter.getId();
         if (activeChapterId == null) return;
 
+        // 1. Calculate World Space Mouse and Shadow/Ghost coordinates
+        float absoluteCenterX = (float) (this.width / 2.0);
+        float absoluteCenterY = (float) (this.height / 2.0);
+        double worldMouseX = this.offsetX + ((mouseX - absoluteCenterX) / this.zoom);
+        double worldMouseY = this.offsetY + ((mouseY - absoluteCenterY) / this.zoom);
+
         float ghostX = 0, ghostY = 0;
-        if (this.movingQuest != null) {
-            float absoluteCenterX = (float) (this.width / 2.0);
-            float absoluteCenterY = (float) (this.height / 2.0);
+        float imgGhostX = 0, imgGhostY = 0;
+        float textGhostX = 0, textGhostY = 0;
 
-            double worldMouseX = this.offsetX + ((mouseX - absoluteCenterX) / this.zoom);
-            double worldMouseY = this.offsetY + ((mouseY - absoluteCenterY) / this.zoom);
-
-            // FIX: Snap the CENTER of the mouse to the grid first, then offset to find the top-left (ghostX/Y)
-            ghostX = (float) (Math.round(worldMouseX / GRID_SNAP) * GRID_SNAP - (this.movingQuest.getSize() / 2.0));
-            ghostY = (float) (Math.round(worldMouseY / GRID_SNAP) * GRID_SNAP - (this.movingQuest.getSize() / 2.0));
+        if (this.movingQuest != null || this.movingCanvasImage != null || this.movingCanvasText != null) {
+            if (this.movingQuest != null) {
+                ghostX = (float) (Math.round(worldMouseX / GRID_SNAP) * GRID_SNAP - (this.movingQuest.getSize() / 2.0));
+                ghostY = (float) (Math.round(worldMouseY / GRID_SNAP) * GRID_SNAP - (this.movingQuest.getSize() / 2.0));
+            }
+            if (this.movingCanvasImage != null) {
+                imgGhostX = (float) (Math.round((worldMouseX - this.dragOffsetX) / GRID_SNAP) * GRID_SNAP);
+                imgGhostY = (float) (Math.round((worldMouseY - this.dragOffsetY) / GRID_SNAP) * GRID_SNAP);
+            }
+            if (this.movingCanvasText != null) {
+                textGhostX = (float) (Math.round((worldMouseX - this.dragOffsetX) / GRID_SNAP) * GRID_SNAP);
+                textGhostY = (float) (Math.round((worldMouseY - this.dragOffsetY) / GRID_SNAP) * GRID_SNAP);
+            }
         }
 
         // =========================================================================
@@ -1479,13 +1586,104 @@ public class QuestScreen extends Screen {
             Identifier tex = getOrRequestImage(ci.getImageId());
             if (tex == null) continue;
 
-            graphics.pose().pushMatrix();
-            graphics.pose().translate((float)ci.getX(), (float)ci.getY());
-            graphics.pose().rotate(ci.getRotation());
+            float halfW = (float) ci.getWidth() / 2f;
+            float halfH = (float) ci.getHeight() / 2f;
+            
+            // Dim the original stationary image while it is being moved
+            float alphaMod = (ci == this.movingCanvasImage) ? 0.3f : 1.0f;
 
-            // Use the 10-parameter blit for scaling
-            graphics.blit(RenderPipelines.GUI_TEXTURED, tex, 0, 0, 0f, 0f, (int)ci.getWidth(), (int)ci.getHeight(), (int)ci.getWidth(), (int)ci.getHeight());
-            graphics.pose().popMatrix();
+            graphics.pose().pushMatrix();
+            // 1. Move origin to image center
+            graphics.pose().translate((float)ci.getX() + halfW, (float)ci.getY() + halfH);
+            // 2. Rotate around center
+            graphics.pose().rotate(ci.getRotation());
+            // 3. Move origin back to top-left for drawing
+            graphics.pose().translate(-halfW, -halfH);
+
+            // FIX: Use only ONE blit call with the alpha tint (multiplied by ghost status).
+            int alphaTint = ((int)(ci.getAlpha() * 255 * alphaMod) << 24) | 0xFFFFFF;
+            graphics.blit(RenderPipelines.GUI_TEXTURED, tex, 0, 0, 0f, 0f, (int)ci.getWidth(), (int)ci.getHeight(), (int)ci.getWidth(), (int)ci.getHeight(), alphaTint);
+
+            // --- SELECTION UI: TRANSFORM BOX (Must be inside rotation matrix) ---
+            if (ci == selectedCanvasImage) {
+                // Draw basic selection outline slightly outside the image
+                graphics.outline(-1, -1, (int)ci.getWidth() + 2, (int)ci.getHeight() + 2, COL_TEXT_GOLD);
+
+                int s = 6; // Handle thickness
+                int w = (int)ci.getWidth();
+                int h = (int)ci.getHeight();
+
+                // Hit detection for handle highlighting (Local Space)
+                double dx = worldMouseX - (ci.getX() + ci.getWidth() / 2.0);
+                double dy = worldMouseY - (ci.getY() + ci.getHeight() / 2.0);
+                double angle = -ci.getRotation();
+                double localMouseX = (dx * Math.cos(angle) - dy * Math.sin(angle)) + (ci.getWidth() / 2.0);
+                double localMouseY = (dx * Math.sin(angle) + dy * Math.cos(angle)) + (ci.getHeight() / 2.0);
+
+                if (currentImageMode == ManipulationMode.SCALE) {
+                    int[][] hBoxes = {
+                            {-s, -s, s, s},   // 0: TL Square
+                            {0, -s, w, s},    // 1: Top Bar
+                            {w, -s, s, s},    // 2: TR Square
+                            {w, 0, s, h},     // 3: Right Bar
+                            {w, h, s, s},     // 4: BR Square
+                            {0, h, w, s},     // 5: Bottom Bar
+                            {-s, h, s, s},    // 6: BL Square
+                            {-s, 0, s, h}     // 7: Left Bar
+                    };
+
+                    for (int i = 0; i < hBoxes.length; i++) {
+                        int[] b = hBoxes[i];
+                        // Check if mouse is over this handle box (with 1px buffer)
+                        boolean isHovered = localMouseX >= b[0] - 1 && localMouseX <= b[0] + b[2] + 1 &&
+                                           localMouseY >= b[1] - 1 && localMouseY <= b[1] + b[3] + 1;
+                        boolean isActive = isHovered || (i == scaleHandleIndex);
+                        
+                        int color = isActive ? COL_TEXT_GOLD : COL_UI_BORDER;
+                        graphics.outline(b[0], b[1], b[2], b[3], color);
+                    }
+                } else if (currentImageMode == ManipulationMode.ROTATE) {
+                    int handleSize = 8;
+                    // Position rotation handles outside corners for consistency
+                    int[][] hBoxes = {
+                            {-handleSize, -handleSize, handleSize, handleSize}, // TL
+                            {w, -handleSize, handleSize, handleSize},           // TR
+                            {w, h, handleSize, handleSize},                     // BR
+                            {-handleSize, h, handleSize, handleSize}            // BL
+                    };
+
+                    for (int i = 0; i < hBoxes.length; i++) {
+                        int[] b = hBoxes[i];
+                        boolean isHovered = localMouseX >= b[0] - 1 && localMouseX <= b[0] + b[2] + 1 &&
+                                           localMouseY >= b[1] - 1 && localMouseY <= b[1] + b[3] + 1;
+                        boolean isActive = isHovered || isDraggingRotateHandle;
+                        
+                        int color = isActive ? COL_TEXT_GOLD : COL_UI_BORDER;
+                        graphics.outline(b[0], b[1], b[2], b[3], color);
+                    }
+                }
+            }
+            graphics.pose().popMatrix(); // End Image Rotation Matrix
+
+            // --- SELECTION UI: BUTTONS (Must be OUTSIDE rotation matrix so they don't orbit) ---
+            if (ci == selectedCanvasImage) {
+                graphics.pose().pushMatrix();
+                graphics.pose().translate((float)ci.getX(), (float)ci.getY());
+
+                graphics.pose().pushMatrix();
+                graphics.pose().translate(-25, 0); // Position buttons to the left of the image origin
+                graphics.pose().scale(0.8f, 0.8f); // Buttons now scale with zoom (canvas standard)
+                
+                renderManipulationButton(graphics, 0, 0, QuestEditorUI.SCALE_ICON, currentImageMode == ManipulationMode.SCALE);
+                renderManipulationButton(graphics, 0, 20, QuestEditorUI.ROTATE_ICON, currentImageMode == ManipulationMode.ROTATE);
+                renderManipulationButton(graphics, 0, 40, QuestEditorUI.ALPHA_ICON, currentImageMode == ManipulationMode.ALPHA);
+
+                if (currentImageMode == ManipulationMode.ALPHA) {
+                    renderStandaloneAlphaSlider(graphics, ci);
+                }
+                graphics.pose().popMatrix();
+                graphics.pose().popMatrix();
+            }
         }
 
         // =========================================================================
@@ -1493,12 +1691,15 @@ public class QuestScreen extends Screen {
         // =========================================================================
         for (CanvasText ct : this.allCanvasTexts) {
             if (!ct.getChapterName().equals(activeChapterId)) continue;
+            
+            // Dim the original text while it is being moved
+            float alphaMod = (ct == this.movingCanvasText) ? 0.3f : 1.0f;
 
             graphics.pose().pushMatrix();
             graphics.pose().translate((float)ct.getX(), (float)ct.getY());
             graphics.pose().scale(ct.getScale(), ct.getScale());
 
-            int color = ct.getColor();
+            int color = (ct.getColor() & 0x00FFFFFF) | ((int)(((ct.getColor() >> 24) & 0xFF) * alphaMod) << 24);
             graphics.text(this.font, Component.literal(ct.getText()), 0, 0, color);
 
             graphics.pose().popMatrix();
@@ -1604,32 +1805,220 @@ public class QuestScreen extends Screen {
         if (this.movingQuest != null) {
             QuestShapeRenderer.render(this.movingQuest.getShape(), graphics, (int)ghostX, (int)ghostY, (int)this.movingQuest.getSize(), COL_GHOST_BORDER, COL_GHOST_FILL);
         }
+
+        // PASS 6: RENDER GHOST IMAGE
+        if (this.movingCanvasImage != null) {
+            Identifier tex = getOrRequestImage(this.movingCanvasImage.getImageId());
+            if (tex != null) {
+                float halfW = (float) this.movingCanvasImage.getWidth() / 2f;
+                float halfH = (float) this.movingCanvasImage.getHeight() / 2f;
+                graphics.pose().pushMatrix();
+                graphics.pose().translate(imgGhostX + halfW, imgGhostY + halfH);
+                graphics.pose().rotate(this.movingCanvasImage.getRotation());
+                graphics.pose().translate(-halfW, -halfH);
+
+                // Semi-transparent ghost color (50% of current image alpha)
+                int ghostAlpha = (int)(this.movingCanvasImage.getAlpha() * 255 * 0.5f);
+                int alphaTint = (ghostAlpha << 24) | 0xFFFFFF;
+                graphics.blit(RenderPipelines.GUI_TEXTURED, tex, 0, 0, 0f, 0f, 
+                        (int)this.movingCanvasImage.getWidth(), (int)this.movingCanvasImage.getHeight(), 
+                        (int)this.movingCanvasImage.getWidth(), (int)this.movingCanvasImage.getHeight(), alphaTint);
+                graphics.pose().popMatrix();
+            }
+        }
+
+        // PASS 7: RENDER GHOST TEXT
+        if (this.movingCanvasText != null) {
+            graphics.pose().pushMatrix();
+            graphics.pose().translate(textGhostX, textGhostY);
+            graphics.pose().scale(this.movingCanvasText.getScale(), this.movingCanvasText.getScale());
+            // Use semi-transparent version of current color
+            int ghostColor = (this.movingCanvasText.getColor() & 0x00FFFFFF) | 0x80000000;
+            graphics.text(this.font, Component.literal(this.movingCanvasText.getText()), 0, 0, ghostColor);
+            graphics.pose().popMatrix();
+        }
+    }
+
+    public boolean handleImageInteraction(double mouseX, double mouseY, int button) {
+        if (selectedCanvasImage == null || (button != 0 && button != 1)) return false;
+
+        // 1. Convert mouse to World Space
+        float absoluteCenterX = (float) (this.width / 2.0f);
+        float absoluteCenterY = (float) (this.height / 2.0);
+        double worldMouseX = this.offsetX + ((mouseX - absoluteCenterX) / this.zoom);
+        double worldMouseY = this.offsetY + ((mouseY - absoluteCenterY) / this.zoom);
+
+        // 2. Tool Toggle Check (Buttons at -25 relative to image origin)
+        double relX = worldMouseX - selectedCanvasImage.getX();
+        double relY = worldMouseY - selectedCanvasImage.getY();
+        double btnScale = 0.8;
+        double hitX = (relX + 25) / btnScale;
+        double hitY = relY / btnScale;
+
+        // S Button
+        if (hitX >= 0 && hitX <= 15 && hitY >= 0 && hitY <= 15) {
+            currentImageMode = (currentImageMode == ManipulationMode.SCALE) ? ManipulationMode.NONE : ManipulationMode.SCALE;
+            playClickSound(); return true;
+        }
+        // R Button
+        if (hitX >= 0 && hitX <= 15 && hitY >= 20 && hitY <= 35) {
+            currentImageMode = (currentImageMode == ManipulationMode.ROTATE) ? ManipulationMode.NONE : ManipulationMode.ROTATE;
+            playClickSound(); return true;
+        }
+        // A Button
+        if (hitX >= 0 && hitX <= 15 && hitY >= 40 && hitY <= 55) {
+            currentImageMode = (currentImageMode == ManipulationMode.ALPHA) ? ManipulationMode.NONE : ManipulationMode.ALPHA;
+            playClickSound(); return true;
+        }
+
+        // 3. Mode-Specific Interaction (Handles/Sliders)
+        // FIX: Transform world mouse into Image-Local Space relative to the CENTER pivot
+        double iw = selectedCanvasImage.getWidth();
+        double ih = selectedCanvasImage.getHeight();
+        double centerX = selectedCanvasImage.getX() + iw / 2.0;
+        double centerY = selectedCanvasImage.getY() + ih / 2.0;
+
+        double dx = worldMouseX - centerX;
+        double dy = worldMouseY - centerY;
+        double angle = -selectedCanvasImage.getRotation();
+        double localX = (dx * Math.cos(angle) - dy * Math.sin(angle)) + (iw / 2.0);
+        double localY = (dx * Math.sin(angle) + dy * Math.cos(angle)) + (ih / 2.0);
+
+        if (currentImageMode == ManipulationMode.SCALE) {
+            int s = 6; // Matching thickness in renderer
+            // Hitboxes for the external frame (slightly inflated for easier clicking)
+            int[][] hBoxes = {
+                    {-s, -s, s, s}, {0, -s, (int)iw, s}, {(int)iw, -s, s, s}, // TL, T, TR
+                    {(int)iw, 0, s, (int)ih}, {(int)iw, (int)ih, s, s},       // R, BR
+                    {0, (int)ih, (int)iw, s}, {-s, (int)ih, s, s}, {-s, 0, s, (int)ih} // B, BL, L
+            };
+
+            for (int i = 0; i < hBoxes.length; i++) {
+                if (localX >= hBoxes[i][0] - 1 && localX <= hBoxes[i][0] + hBoxes[i][2] + 1 &&
+                        localY >= hBoxes[i][1] - 1 && localY <= hBoxes[i][1] + hBoxes[i][3] + 1) {
+
+                    this.scaleHandleIndex = i;
+                    this.isDraggingScaleHandle = true;
+
+                    // Capture starting state for delta calculations
+                    this.startX = selectedCanvasImage.getX();
+                    this.startY = selectedCanvasImage.getY();
+                    this.startW = selectedCanvasImage.getWidth();
+                    this.startH = selectedCanvasImage.getHeight();
+
+                    return true;
+                }
+            }
+        } else if (currentImageMode == ManipulationMode.ROTATE) {
+            int hs = 8;
+            // Updated hit detection to match external handle positions
+            boolean tl = localX >= -hs && localX <= 0 && localY >= -hs && localY <= 0;
+            boolean tr = localX >= iw && localX <= iw + hs && localY >= -hs && localY <= 0;
+            boolean bl = localX >= -hs && localX <= 0 && localY >= ih && localY <= ih + hs;
+            boolean br = localX >= iw && localX <= iw + hs && localY >= ih && localY <= ih + hs;
+            if (tl || tr || bl || br) {
+                initialRotateAngle = Math.atan2(worldMouseY - centerY, worldMouseX - centerX);
+                initialImageRotation = selectedCanvasImage.getRotation();
+                this.isDraggingRotateHandle = true;
+                return true;
+            }
+        } else if (currentImageMode == ManipulationMode.ALPHA) {
+            if (hitX >= -110 && hitX <= -10 && hitY >= 42 && hitY <= 52) {
+                isDraggingAlphaSlider = true;
+                return true;
+            }
+        }
+        return false;
+    }
+
+    public boolean isMouseOverImage(double mouseX, double mouseY, QuestCanvasImage ci) {
+        float absoluteCenterX = (float) (this.width / 2.0);
+        float absoluteCenterY = (float) (this.height / 2.0);
+        double worldMouseX = this.offsetX + ((mouseX - absoluteCenterX) / this.zoom);
+        double worldMouseY = this.offsetY + ((mouseY - absoluteCenterY) / this.zoom);
+
+        // FIX: Re-calculate local mouse position relative to the center pivot
+        double iw = ci.getWidth();
+        double ih = ci.getHeight();
+        double centerX = ci.getX() + iw / 2.0;
+        double centerY = ci.getY() + ih / 2.0;
+
+        double dx = worldMouseX - centerX;
+        double dy = worldMouseY - centerY;
+        double angle = -ci.getRotation();
+        double localX = (dx * Math.cos(angle) - dy * Math.sin(angle)) + (iw / 2.0);
+        double localY = (dx * Math.sin(angle) + dy * Math.cos(angle)) + (ih / 2.0);
+
+        return localX >= 0 && localX <= iw && localY >= 0 && localY <= ih;
+    }
+
+    public void openImagePicker(double snappedX, double snappedY) {
+        new Thread(() -> {
+            String path = null;
+            
+            // Use MemoryStack to handle the low-level pointers for file filters
+            try (MemoryStack stack = MemoryStack.stackPush()) {
+                PointerBuffer filters = stack.mallocPointer(3);
+                filters.put(stack.UTF8("*.png"));
+                filters.put(stack.UTF8("*.jpg"));
+                filters.put(stack.UTF8("*.jpeg"));
+                filters.flip();
+
+                path = TinyFileDialogs.tinyfd_openFileDialog("Select Quest Image", "", filters, "Image files", false);
+            }
+
+            if (path != null) {
+                File file = new File(path);
+                String fileName = file.getName();
+                try {
+                    // Read bytes in the background thread to prevent game stutter
+                    byte[] data = Files.readAllBytes(file.toPath());
+                Minecraft.getInstance().execute(() -> {
+                    ClientPacketDistributor.sendToServer(new UploadImagePayload(fileName, data));
+
+                    // Create and add the image to the canvas immediately so it appears without a restart
+                    QuestCanvasImage ci = new QuestCanvasImage("img_" + System.currentTimeMillis(), fileName, snappedX, snappedY, 64.0, 64.0, 0f, 1.0f);
+                    ci.setChapterName(this.selectedChapter.getId());
+                    this.allCanvasImages.add(ci);
+                    saveChapterData(this.selectedChapter.getId());
+                });
+                } catch (Exception e) { e.printStackTrace(); }
+            }
+        }).start();
     }
 
     private Identifier getOrRequestImage(String imageId) {
         if (imageId == null || imageId.isEmpty()) return null;
 
+        // 1. Check if already loaded in memory
         if (DYNAMIC_IMAGES.containsKey(imageId)) return DYNAMIC_IMAGES.get(imageId);
 
-        // Check local cache folder first
+        // 2. Check if we are already waiting for this image (prevents spam)
+        if (PENDING_REQUESTS.contains(imageId)) return null;
+
+        // Mark as pending immediately
+        PENDING_REQUESTS.add(imageId);
+
+        // 3. Check local disk cache folder
         File cacheFile = Minecraft.getInstance().gameDirectory.toPath().resolve("simplyquests_cache").resolve(imageId).toFile();
         if (cacheFile.exists()) {
             try {
                 loadTextureFromFile(imageId, Files.readAllBytes(cacheFile.toPath()));
-                return DYNAMIC_IMAGES.get(imageId);
+                return null; // Will be available next frame once loadTextureFromFile finishes
             } catch (Exception ignored) {}
         }
 
-        // Not in memory and not on disk? Request from server
-        if (Util.getMillis() % 5000 < 50) { // Throttle requests
-            ClientPacketDistributor.sendToServer(new RequestImagePayload(imageId));
-        }
+        // 4. Not on disk? Request from server immediately
+        ClientPacketDistributor.sendToServer(new RequestImagePayload(imageId));
+
         return null;
     }
 
     public static void loadTextureFromFile(String imageId, byte[] data) {
         Minecraft.getInstance().execute(() -> {
             try {
+                // Once loaded, we are no longer "pending"
+                PENDING_REQUESTS.remove(imageId);
                 NativeImage nativeImage = NativeImage.read(new ByteArrayInputStream(data));
                 DynamicTexture dynamicTexture = new DynamicTexture(() -> "simplyquests/dynamic/" + imageId, nativeImage);
                 // Use regex sanitization for dynamic image paths
@@ -1640,6 +2029,18 @@ public class QuestScreen extends Screen {
                 e.printStackTrace();
             }
         });
+    }
+
+    public static void deleteLocalImageCache(String imageId) {
+        // 1. Remove from memory map so the UI stops trying to use the old Identifier
+        DYNAMIC_IMAGES.remove(imageId);
+        PENDING_REQUESTS.remove(imageId);
+
+        // 2. Physically delete the file from the local machine's cache folder
+        File cacheFile = Minecraft.getInstance().gameDirectory.toPath().resolve("simplyquests_cache").resolve(imageId).toFile();
+        if (cacheFile.exists()) {
+            cacheFile.delete();
+        }
     }
 
     // Quick helper method to keep code clean
@@ -1737,8 +2138,17 @@ public class QuestScreen extends Screen {
         this.contextMenuY = y;
     }
 
-    public void openCanvasContextMenu(double x, double y) {
+    public void openImageContextMenu(double x, double y, QuestCanvasImage ci) {
         setContextMenuPos(x, y, 2);
+        this.isContextMenuOpen = true;
+        this.isImageContextMenu = true;
+        this.selectedCanvasImage = ci;
+        this.questToModify = null;
+        playClickSound();
+    }
+
+    public void openCanvasContextMenu(double x, double y) {
+        setContextMenuPos(x, y, 3);
         this.isContextMenuOpen = true;
         this.questToModify = null;
         this.isTaskContextMenu = false;
@@ -1746,6 +2156,7 @@ public class QuestScreen extends Screen {
         this.isRewardContextMenu = false;
         this.isSideBarContextMenu = false;
         this.isSideBarEntryMenu = false;
+        this.isImageContextMenu = false;
         this.editingCanvasText = null;
         playClickSound();
     }
@@ -1786,6 +2197,12 @@ public class QuestScreen extends Screen {
         if (PickerHandler.handle(this, mouseX, mouseY, button)) return true;
 
         // 1.5 Claim All Button Check (Only if not in a modal and rewards are available)
+        
+        // --- NEW: Image Manipulation Check ---
+        if (selectedCanvasImage != null && handleImageInteraction(mouseX, mouseY, button)) {
+            return true;
+        }
+
         if (hasAnyClaimableRewards() && button == 0 && !isEditorOpen && !isTaskEditorOpen && !isRewardEditorOpen && !isTextEditorOpen && !isSettingsOpen && !isItemSubmissionOpen) {
             int btnSize = 16;
             int btnX = this.width - btnSize - 5;
@@ -1807,6 +2224,7 @@ public class QuestScreen extends Screen {
                 this.isSideBarEntryMenu = false;
                 this.isTaskContextMenu = false;
                 this.isRewardContextMenu = false;
+                this.isImageContextMenu = false;
                 this.isTextContextMenu = false;
                 playClickSound();
             }
@@ -2739,8 +3157,9 @@ public class QuestScreen extends Screen {
         else if (isSideBarEntryMenu) options = (sidebarTargetEntry instanceof SidebarGroup) ? List.of("Move", "Rename", "Reset Progress", "Delete") : List.of("Move", "Rename", "Edit Icon", "Reset Progress", "Delete");
         else if (isTaskContextMenu) options = getTaskOptions();
         else if (isRewardContextMenu) options = List.of("Edit", "Delete", "Move");
+        else if (isImageContextMenu) options = List.of("Move", "Delete");
         else if (isTextContextMenu) options = List.of("Edit Text", "Delete", "Move");
-        else options = (questToModify == null) ? List.of("Create Quest", "Add Text") : List.of("Edit", "Complete", "Delete", "Reset Progress", "Move");
+        else options = (questToModify == null) ? List.of("Create Quest", "Add Text", "Add Image") : List.of("Edit", "Complete", "Delete", "Reset Progress", "Move");
 
         int w = 110;
         int h = options.size() * 20;
@@ -2832,7 +3251,8 @@ public class QuestScreen extends Screen {
         else if (isTaskContextMenu) optionCount = getTaskOptions().size();
         else if (isRewardContextMenu) optionCount = 3;
         else if (isTextContextMenu) optionCount = 3;
-        else optionCount = (questToModify == null) ? 2 : 5;
+        // FIX: Increased from 2 to 3 to accommodate the "Add Image" option
+        else optionCount = (questToModify == null) ? 3 : 5;
 
         // 2. Define the exact dimensions
         int w = 110;
@@ -2928,6 +3348,31 @@ public class QuestScreen extends Screen {
 
             this.isRewardContextMenu = false;
             this.isContextMenuOpen = false;
+            return;
+        }
+
+        if (isImageContextMenu) {
+            int relativeY = (int) (mouseY - contextMenuY);
+            int optionIndex = relativeY / 20;
+            if (optionIndex == 0) { // Move
+                this.movingCanvasImage = this.selectedCanvasImage;
+                float absoluteCenterX = (float) (this.width / 2.0);
+                float absoluteCenterY = (float) (this.height / 2.0);
+                double worldMouseX = this.offsetX + ((contextMenuX - absoluteCenterX) / this.zoom);
+                double worldMouseY = this.offsetY + ((contextMenuY - absoluteCenterY) / this.zoom);
+                this.dragOffsetX = worldMouseX - this.movingCanvasImage.getX();
+                this.dragOffsetY = worldMouseY - this.movingCanvasImage.getY();
+            } else if (optionIndex == 1) { // Delete
+                // Capture the filename before removing the object from the list
+                String imgId = this.selectedCanvasImage.getImageId();
+                this.allCanvasImages.remove(this.selectedCanvasImage);
+                saveChapterData(this.selectedCanvasImage.getChapterName());
+                // Request server to delete the physical file
+                ClientPacketDistributor.sendToServer(new DeleteImagePayload(imgId));
+                // FIX: Immediately purge the image from the client's memory and disk cache
+                deleteLocalImageCache(imgId);
+                this.selectedCanvasImage = null;
+            }
             return;
         }
 
@@ -3143,9 +3588,7 @@ public class QuestScreen extends Screen {
                 ct.setChapterName(this.selectedChapter.getName());
                 openTextEditor(ct);
             } else if (optionIndex == 2) { // Add Image
-                // Initialize a 32x32 placeholder image using Items.AIR (which we map to "None")
-                QuestCanvasImage ci = new QuestCanvasImage("image_" + System.currentTimeMillis(), "", snappedX, snappedY, 32.0, 32.0, 0f, 1.0f);
-                ci.setChapterName(this.selectedChapter.getName());
+                openImagePicker(snappedX, snappedY);
             }
         } else {
             // Handling interactions with an existing quest node
@@ -3322,7 +3765,11 @@ public class QuestScreen extends Screen {
                 this.isChoiceModalOpen ||
                 isSidebarEditing() ||
                 this.isDraggingTextSizeSlider ||
-                this.isDraggingSizeSlider;
+                this.isDraggingSizeSlider ||
+                this.isDraggingScaleHandle ||
+                this.movingCanvasImage != null ||
+                this.isDraggingRotateHandle ||
+                this.isDraggingAlphaSlider;
     }
 
     public boolean isSidebarEditing() {
@@ -3901,6 +4348,20 @@ public void checkPendingRefresh() {
         this.movingCanvasText.setX(Math.round(targetX / GRID_SNAP) * GRID_SNAP);
         this.movingCanvasText.setY(Math.round(targetY / GRID_SNAP) * GRID_SNAP);
         saveChapterData(this.movingCanvasText.getChapterName());
+    }
+
+    public void dropImage(double mouseX, double mouseY) {
+        if (this.movingCanvasImage == null) return;
+        float absoluteCenterX = (float) (this.width / 2.0);
+        float absoluteCenterY = (float) (this.height / 2.0);
+        double worldMouseX = this.offsetX + ((mouseX - absoluteCenterX) / this.zoom);
+        double worldMouseY = this.offsetY + ((mouseY - absoluteCenterY) / this.zoom);
+
+        double targetX = worldMouseX - this.dragOffsetX;
+        double targetY = worldMouseY - this.dragOffsetY;
+        this.movingCanvasImage.setX(Math.round(targetX / GRID_SNAP) * GRID_SNAP);
+        this.movingCanvasImage.setY(Math.round(targetY / GRID_SNAP) * GRID_SNAP);
+        saveChapterData(this.movingCanvasImage.getChapterName());
     }
 
     private List<String> getTaskOptions() {
@@ -4821,5 +5282,44 @@ public void checkPendingRefresh() {
 
         // 2. Fallback for Dedicated Servers (Uses the synced status)
         return SimplyQuestsClientPacketHandler.IS_CLIENT_OP;
+    }
+
+    private void renderManipulationButton(GuiGraphicsExtractor graphics, int x, int y, Identifier icon, boolean active) {
+        int bg = active ? COL_TEXT_GOLD : COL_PANEL_HEADER;
+        graphics.fill(x, y, x + 15, y + 15, bg);
+        graphics.outline(x, y, 15, 15, COL_UI_BORDER);
+
+        int tint = active ? COL_UI_BG : COL_TEXT;
+        
+        // Draw icon centered within the 15x15 button with a small 2px padding
+        graphics.pose().pushMatrix();
+        graphics.pose().translate(x + 2, y + 2);
+        // Scale the 16x16 texture to 11x11 area
+        float iconScale = 11.0f / 16.0f;
+        graphics.pose().scale(iconScale, iconScale);
+        graphics.blit(RenderPipelines.GUI_TEXTURED, icon, 0, 0, 0.0f, 0.0f, 16, 16, 16, 16, tint);
+        graphics.pose().popMatrix();
+    }
+
+    private void renderStandaloneAlphaSlider(GuiGraphicsExtractor graphics, QuestCanvasImage ci) {
+        int sw = 100, sh = 10;
+        int sx = -110, sy = 42; // Positioned near the Alpha button
+
+        // 1. Draw black background for contrast
+        graphics.fill(sx, sy, sx + sw, sy + sh, 0xFF000000);
+
+        // 2. Draw Alpha Gradient (White to Transparent)
+        for (int i = 0; i < sw; i++) {
+            float a = i / (float) sw;
+            int color = ((int)(a * 255) << 24) | 0xFFFFFF;
+            graphics.fill(sx + i, sy, sx + i + 1, sy + sh, color);
+        }
+
+        // 3. Draw Outline and Marker
+        graphics.outline(sx, sy, sw, sh, COL_UI_BORDER);
+        int markerX = sx + (int)(ci.getAlpha() * sw);
+        graphics.fill(markerX - 1, sy - 2, markerX + 1, sy + sh + 2, COL_UI_BORDER);
+
+        graphics.centeredText(font, Component.literal("Alpha: " + (int)(ci.getAlpha()*100) + "%"), sx + sw/2, sy - 10, COL_TEXT);
     }
 }

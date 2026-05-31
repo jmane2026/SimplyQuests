@@ -39,6 +39,9 @@ public class QuestEditorUI {
     public static final Identifier CLAIM_ALL_ICON = Identifier.fromNamespaceAndPath("simplyquests", "textures/gui/claim_all.png");
     public static final Identifier FLOW_ARROW = Identifier.fromNamespaceAndPath("simplyquests", "textures/gui/flow_arrow.png");
     public static final Identifier CLOSE_ICON = Identifier.fromNamespaceAndPath("simplyquests", "textures/gui/close.png");
+    public static final Identifier SCALE_ICON = Identifier.fromNamespaceAndPath("simplyquests", "textures/gui/scale.png");
+    public static final Identifier ROTATE_ICON = Identifier.fromNamespaceAndPath("simplyquests", "textures/gui/rotate.png");
+    public static final Identifier ALPHA_ICON = Identifier.fromNamespaceAndPath("simplyquests", "textures/gui/alpha.png");
 
     private final String[] labels = {"Icon", "Title", "Sub-Title", "Description", "Shape", "Size", "Optional", "Repeatable", "Dependencies"};
 

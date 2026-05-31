@@ -9,6 +9,8 @@ import net.minecraft.server.players.NameAndId;
 import net.neoforged.neoforge.network.handling.IPayloadContext;
 import net.neoforged.neoforge.network.PacketDistributor;
 import java.util.ArrayList;
+import java.nio.file.Files;
+import java.nio.file.Path;
 import java.util.List;
 
 public class ServerPayloadHandler {
@@ -64,6 +66,35 @@ public class ServerPayloadHandler {
             // the server just needs to ensure groups.json is updated if needed.
             // Currently, saveGroups handles the manifest update.
             broadcastFullSync();
+        });
+    }
+
+    public static void handleUploadImage(final UploadImagePayload payload, final IPayloadContext context) {
+        if (!isOp(context)) return;
+
+        context.enqueueWork(() -> {
+            try {
+                Path dir = com.jmane2026.simplyquests.data.QuestManager.getImagesDirectory();
+                Path target = dir.resolve(payload.fileName());
+                Files.write(target, payload.data());
+                // Note: We don't broadcast the image here; clients will request it via RequestImagePayload when they see the ID in the chapter file
+            } catch (Exception e) {
+                e.printStackTrace();
+            }
+        });
+    }
+
+    public static void handleDeleteImage(final DeleteImagePayload payload, final IPayloadContext context) {
+        if (!isOp(context)) return;
+
+        context.enqueueWork(() -> {
+            try {
+                Path dir = com.jmane2026.simplyquests.data.QuestManager.getImagesDirectory();
+                Path target = dir.resolve(payload.imageId());
+                Files.deleteIfExists(target);
+            } catch (Exception e) {
+                e.printStackTrace();
+            }
         });
     }
 
