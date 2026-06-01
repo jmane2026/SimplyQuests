@@ -1545,8 +1545,9 @@ public class QuestScreen extends Screen {
 
         // 0. Calculate GLOBAL animation phase for high-precision smoothness
         // We do this at the top so it is accessible to all rendering passes
-        float globalAnimTime = (float) ((System.nanoTime() / 1_000_000.0) % 10000.0) + partialTick;
-        float globalArrowPhase = (globalAnimTime * 0.015f) % 8.0f;
+        // FIX: Switch to System Millis to decouple from game tick lag, which causes occasional hitches.
+        // Multiplying by 0.01f maintains a smooth speed of 10 pixels per second.
+        float globalArrowPhase = (Util.getMillis() % 1000000) * 0.01f % 8.0f;
 
         // PASS 0: BLOCK RENDERING IF EDITOR OPEN
         String activeChapterId = this.selectedChapter.getId();
@@ -2740,11 +2741,12 @@ public class QuestScreen extends Screen {
             int b = (int)((baseColor & 0xFF) * 0.3f);
             int etchedColor = (0x99 << 24) | (r << 16) | (g << 8) | b;
 
-            // FIX: Use the (int, int) translate signature required by the graphics wrapper.
-            // We cast the calculated positions to (int) to satisfy the method call.
+            // FIX: Removed integer casting. Using Vector2f allows the GPU to handle 
+            // sub-pixel translation, which eliminates the "jitter" during movement.
+            // FURTHER FIX: Use primitive floats instead of new Vector2f object to prevent micro-stuttering from GC pressure.
             graphics.pose().pushMatrix();
-            int tx = (int)(d - iThick / 2.0f);
-            graphics.pose().translate(tx, lineXStart);
+            float tx = d - iThick / 2.0f;
+            graphics.pose().translate(tx, (float)lineXStart);
             graphics.blit(RenderPipelines.GUI_TEXTURED, QuestEditorUI.FLOW_ARROW,
                     0, 0, 0, 0, iThick, iThick, iThick, iThick, etchedColor);
             graphics.pose().popMatrix();

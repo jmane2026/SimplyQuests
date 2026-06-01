@@ -91,13 +91,6 @@ public class EditorHandler {
             return true;
         }
 
-        // 3. Icon Toggle Checkbox
-        if (QuestEditorUI.isMouseOver(mouseX, mouseY, px + 15, py + winH - 18, 120, 10)) {
-            screen.tempUseAsIcon = !screen.tempUseAsIcon;
-            QuestScreen.playClickSound();
-            return true;
-        }
-
         // --- Handle Quest Icon Checkbox Click ---
         int cbX = px + 15;
         int cbY = py + winH - 18;
