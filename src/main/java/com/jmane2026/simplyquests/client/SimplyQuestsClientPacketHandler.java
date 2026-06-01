@@ -32,9 +32,9 @@ public class SimplyQuestsClientPacketHandler {
 
     public static void handleSimpleError(final SimpleErrorPayload payload, final IPayloadContext context) {
         context.enqueueWork(() -> {
-            if (Minecraft.getInstance().player != null) {
-                // Show red error text in the action bar
-                Minecraft.getInstance().player.sendSystemMessage(Component.literal("§c" + payload.message()));
+            // FIX: Use context.player() (Common) instead of Minecraft.getInstance() (Client-only)
+            if (context.player() != null) {
+                context.player().sendSystemMessage(Component.literal("§c" + payload.message()));
             }
         });
     }

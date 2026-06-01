@@ -38,7 +38,10 @@ public class SimplyQuestsNetworking {
                 ServerPayloadHandler::handleDeleteGroup
         );
 
-        // Register Sync packet as playToClient (S2C)
+        // --- Clientbound Packets (S2C) ---
+        // FIX: Using lambdas (p, c) -> Handler.method(p, c) instead of method references Class::method
+        // ensures the Dedicated Server never tries to load the client-only Handler class.
+
         registrar.playToClient(
                 SyncQuestTreePayload.TYPE,
                 SyncQuestTreePayload.CODEC,
@@ -54,7 +57,7 @@ public class SimplyQuestsNetworking {
         registrar.playToClient(
                 SimpleErrorPayload.TYPE,
                 SimpleErrorPayload.STREAM_CODEC,
-                SimplyQuestsClientPacketHandler::handleSimpleError
+                isClient ? SimplyQuestsClientPacketHandler::handleSimpleError : (p, c) -> {}
         );
     }
 }
