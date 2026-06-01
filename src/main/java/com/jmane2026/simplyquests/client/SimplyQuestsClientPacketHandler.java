@@ -8,6 +8,7 @@ import com.jmane2026.simplyquests.network.*;
 import com.jmane2026.simplyquests.util.QuestClientData;
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.resources.sounds.SimpleSoundInstance;
+import net.minecraft.network.chat.Component;
 import net.minecraft.resources.Identifier;
 import net.minecraft.sounds.SoundEvents;
 import net.neoforged.neoforge.network.handling.IPayloadContext;
@@ -28,6 +29,15 @@ public class SimplyQuestsClientPacketHandler {
     public static boolean IS_EDIT_MODE_ALLOWED = false;
 
     public static boolean NEEDS_REFRESH = false;
+
+    public static void handleSimpleError(final SimpleErrorPayload payload, final IPayloadContext context) {
+        context.enqueueWork(() -> {
+            if (Minecraft.getInstance().player != null) {
+                // Show red error text in the action bar
+                Minecraft.getInstance().player.sendSystemMessage(Component.literal("§c" + payload.message()));
+            }
+        });
+    }
 
     public static void handleQuestCompleted(final QuestCompletedPayload payload, final IPayloadContext context) {
         context.enqueueWork(() -> {

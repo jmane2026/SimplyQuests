@@ -168,7 +168,8 @@ public class EditorHandler {
             }
         }
 
-        if (mouseX >= px + 100 && mouseX <= px + 240 && mouseY >= py + 130 && mouseY <= py + 144) {
+        int sizeRowY = ui.getRowY("Size", py);
+        if (mouseX >= px + 100 && mouseX <= px + 240 && mouseY >= sizeRowY + 2 && mouseY <= sizeRowY + 14) {
             screen.isDraggingSizeSlider = true; return true;
         }
 

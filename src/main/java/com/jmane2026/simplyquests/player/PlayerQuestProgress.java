@@ -74,23 +74,19 @@ public class PlayerQuestProgress {
     public void resetChapter(String name) { completedChapters.remove(name); }
 
     public HashSet<String> getCompletedQuests() {
-        // Return a copy to prevent ConcurrentModificationException during network sync
-        return new HashSet<>(this.completedQuests);
+        return this.completedQuests;
     }
 
     public HashSet<String> getClaimedRewards() {
-        // Return a copy to prevent ConcurrentModificationException during network sync
-        return new HashSet<>(this.claimedRewards);
+        return this.claimedRewards;
     }
 
     public Map<String, Integer> getTaskProgressMap() {
-        // Return a copy to prevent ConcurrentModificationException during network sync
-        return new HashMap<>(this.taskProgress);
+        return this.taskProgress;
     }
 
     public HashSet<String> getCompletedChapters() {
-        // Return a copy to prevent ConcurrentModificationException during network sync
-        return new HashSet<>(this.completedChapters);
+        return this.completedChapters;
     }
 
     public boolean isEditMode() { return editMode; }

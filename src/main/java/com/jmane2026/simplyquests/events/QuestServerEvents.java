@@ -327,7 +327,17 @@ public class QuestServerEvents {
                 if (progress.isQuestComplete(quest.getId()) || !isQuestUnlocked(quest, progress)) continue;
 
                 for (QuestTask task : quest.getTasks()) {
-                    if (task.getType() == QuestTask.TaskType.KILL && task.getTargetId().equals(killedId.toString())) {
+                    boolean matched = false;
+                    if (task.getType() == QuestTask.TaskType.KILL) {
+                        if (task.getTargetId().startsWith("#")) {
+                            TagKey<EntityType<?>> tagKey = TagKey.create(Registries.ENTITY_TYPE, Identifier.parse(task.getTargetId().substring(1)));
+                            if (event.getEntity().getType().builtInRegistryHolder().is(tagKey)) matched = true;
+                        } else if (task.getTargetId().equals(killedId.toString())) {
+                            matched = true;
+                        }
+                    }
+
+                    if (matched) {
                         int current = progress.getTaskAmount(task.getId());
                         if (current < task.getRequiredAmount()) {
                             progress.setTaskAmount(task.getId(), current + 1);

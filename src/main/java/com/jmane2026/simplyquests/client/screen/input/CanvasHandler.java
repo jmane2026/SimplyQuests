@@ -58,7 +58,7 @@ public class CanvasHandler {
             int tasksCenter = b.x + (b.width / 4);
             int plusX = tasksCenter + (Minecraft.getInstance().font.width("Tasks") / 2) + 8;
             if (mouseX >= plusX - 2 && mouseX <= plusX + 10) {
-                screen.taskToModify = new QuestTask(QuestTask.generateTaskId(screen.selectedQuest.getId(), "task", screen.selectedQuest.getTasks()), QuestTask.TaskType.CHECKBOX, "", "New Task", 1, 0, false, false, false, QuestTask.TaskState.INCOMPLETE, 0, 0, 0, false);
+                screen.taskToModify = new QuestTask(QuestTask.generateTaskId(screen.selectedQuest.getId(), "task", screen.selectedQuest.getTasks()), QuestTask.TaskType.ITEM, "", "New Task", 1, 0, false, false, false, QuestTask.TaskState.INCOMPLETE, 0, 0, 0, false);
                 screen.isTaskEditorOpen = true;
                 screen.editorUI.isTaskMode = true;
                 screen.tempUseAsIcon = false; // New tasks start as false

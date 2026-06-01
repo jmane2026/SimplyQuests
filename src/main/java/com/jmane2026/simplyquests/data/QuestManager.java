@@ -298,9 +298,39 @@ public class QuestManager extends SimpleJsonResourceReloadListener {
         List<Quest> newlyCompletedQuests = new ArrayList<>();
         List<QuestChapter> newlyCompletedChapters = new ArrayList<>();
 
+        // 1. Gather all valid IDs from the current registry for validation
         List<Quest> allQuests = getAllQuests();
         Map<String, Quest> lookup = new HashMap<>();
-        allQuests.forEach(q -> lookup.put(q.getId(), q));
+        Set<String> validTaskIds = new HashSet<>();
+        Set<String> validChapterNames = new HashSet<>();
+
+        this.chapters.values().forEach(ch -> validChapterNames.add(ch.getName()));
+        for (Quest q : allQuests) {
+            lookup.put(q.getId(), q);
+            for (QuestTask t : q.getTasks()) validTaskIds.add(t.getId());
+        }
+
+        // 2. PRUNING: Remove "Zombie" data from player progress that no longer exists in config
+        // This prevents recreated quests from inheriting progress from deleted versions.
+        
+        // Prune Completed Quests
+        progress.getCompletedQuests().removeIf(id -> !lookup.containsKey(id));
+        
+        // Prune Task Progress
+        // FIX: Use getTaskProgressMap() and check if the ID exists in our valid set
+        progress.getTaskProgressMap().keySet().removeIf(id -> !validTaskIds.contains(id));
+        
+        // Prune Claimed Rewards (IDs are chapter/quest/reward_name)
+        progress.getClaimedRewards().removeIf(id -> {
+            int lastSlash = id.lastIndexOf('/');
+            if (lastSlash == -1) return true; // Prune malformed or legacy IDs
+            String questId = id.substring(0, lastSlash);
+            return !lookup.containsKey(questId);
+        });
+
+        // Prune Completed Chapters
+        progress.getCompletedChapters().removeIf(name -> !validChapterNames.contains(name));
+
         Map<String, QuestState> computedStates = new HashMap<>();
 
         for (Quest quest : allQuests) {

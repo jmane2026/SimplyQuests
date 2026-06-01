@@ -50,5 +50,11 @@ public class SimplyQuestsNetworking {
                 SyncOpStatusPayload.CODEC,
                 isClient ? SimplyQuestsClientPacketHandler::handleSyncOpStatus : (p, c) -> {}
         );
+
+        registrar.playToClient(
+                SimpleErrorPayload.TYPE,
+                SimpleErrorPayload.STREAM_CODEC,
+                SimplyQuestsClientPacketHandler::handleSimpleError
+        );
     }
 }

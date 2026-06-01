@@ -60,7 +60,7 @@ public class QuestEditorUI {
     public boolean isTargetPickerOpen = false;
     public boolean isColorPickerOpen = false;
     public boolean isTypePickerOpen = false;
-    public QuestTask.TaskType currentTaskType = QuestTask.TaskType.CHECKBOX;
+    public QuestTask.TaskType currentTaskType = QuestTask.TaskType.ITEM;
     public QuestReward.RewardType currentRewardType = QuestReward.RewardType.ITEM;
     public boolean isHexEditing = false;
     public boolean isQuantityOpen = false;
@@ -495,7 +495,7 @@ public class QuestEditorUI {
             boolean isCoordRow = labels[i].equals("X") || labels[i].equals("Y") || labels[i].equals("Z");
 
             switch (labels[i]) {
-                case "Type" -> { value = task.getType().name(); buttonText = "Change"; }
+                case "Type" -> { value = toTitleCase(task.getType().name()); buttonText = "Change"; }
                 case "Target" -> { value = task.getTargetDisplayName(); }
                 case "Name" -> value = task.getName().isEmpty() ? "(Default)" : task.getName();
                 case "Quantity" -> value = String.valueOf(task.getRequiredAmount()); // Shown if not editing
@@ -697,7 +697,7 @@ public class QuestEditorUI {
             graphics.text(font, labels[i] + ":", leftMargin, rowY + 2, QuestScreen.COL_TEXT);
 
             String value = switch (labels[i]) {
-                case "Type" -> reward.getType().name();
+                case "Type" -> toTitleCase(reward.getType().name());
                 case "Target" -> reward.getItem() == Items.AIR ? "None" : reward.getItem().getDefaultInstance().getHoverName().getString();
                 case "Quantity" -> String.valueOf(reward.getCount());
                 case "Command" -> reward.getCommand();
@@ -741,7 +741,7 @@ public class QuestEditorUI {
                     if (mouseX >= b.x() && mouseX <= b.x() + b.w() && mouseY >= rowY && mouseY <= rowY + 16) {
                         graphics.fill(b.x(), rowY, b.x() + b.w(), rowY + 16, QuestScreen.COL_HOVER_MENU);
                     }
-                    graphics.text(font, types[i].toString(), b.x() + 5, rowY + 4, QuestScreen.COL_TEXT);
+                    graphics.text(font, toTitleCase(types[i].toString()), b.x() + 5, rowY + 4, QuestScreen.COL_TEXT);
                 }
                 graphics.disableScissor();
             });

@@ -1951,18 +1951,26 @@ public class QuestScreen extends Screen {
             
             // Use MemoryStack to handle the low-level pointers for file filters
             try (MemoryStack stack = MemoryStack.stackPush()) {
-                PointerBuffer filters = stack.mallocPointer(3);
+                PointerBuffer filters = stack.mallocPointer(1);
                 filters.put(stack.UTF8("*.png"));
-                filters.put(stack.UTF8("*.jpg"));
-                filters.put(stack.UTF8("*.jpeg"));
                 filters.flip();
-
-                path = TinyFileDialogs.tinyfd_openFileDialog("Select Quest Image", "", filters, "Image files", false);
+                path = TinyFileDialogs.tinyfd_openFileDialog("Select Quest Image", "", filters, "PNG files (*.png)", false);
             }
 
             if (path != null) {
                 File file = new File(path);
                 String fileName = file.getName();
+
+                // LOCAL VALIDATION: Catch the "All Files" fallback immediately
+                if (!fileName.toLowerCase().endsWith(".png")) {
+                    Minecraft.getInstance().execute(() -> {
+                        if (Minecraft.getInstance().player != null) {
+                            Minecraft.getInstance().player.sendSystemMessage(Component.literal("§cOnly PNG files can be used as quest decorations!"));
+                        }
+                    });
+                    return;
+                }
+
                 try {
                     // Read bytes in the background thread to prevent game stutter
                     byte[] data = Files.readAllBytes(file.toPath());
@@ -3305,6 +3313,9 @@ public class QuestScreen extends Screen {
     }
 
     public void deleteQuest(Quest quest) {
+        // FIX: Immediately clear from client-side completion cache
+        SimplyQuestsClientPacketHandler.CLIENT_COMPLETED_QUESTS.remove(quest.getId());
+        
         // 1. Remove from the primary list
         this.allQuests.remove(quest);
 

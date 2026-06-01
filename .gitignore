@@ -30,3 +30,4 @@ simplyquests_cache/
 
 # Output Jars
 *.jar
+!gradle/wrapper/gradle-wrapper.jar
