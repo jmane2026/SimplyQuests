@@ -1767,16 +1767,9 @@ public class QuestScreen extends Screen {
             // Pass isHovered down to the drawing helper
             drawQuestNode(graphics, x, y, size, isSelected, isHovered, stateColor, quest);
 
-            // Render the item Logo centered and scaled inside the node boundary box
-            ItemStack logoStack = new ItemStack(quest.getLogo());
-            float itemScale = (quest.getSize() / 24.0f); // Padding is now handled by drawQuestIcon helper
-            graphics.pose().pushMatrix();
-            // Translate to the center of the quest node
-            graphics.pose().translate(x + size / 2.0f, y + size / 2.0f);
-            graphics.pose().scale(itemScale, itemScale);
-            // Draw the item centered at the new origin (-8 is half of the standard 16px item width)
-            editorUI.drawQuestIcon(graphics, quest, -8, -8, 16); // drawQuestIcon now handles the checkmark logic
-            graphics.pose().popMatrix();
+            // FIX: Use the centralized helper with grid coordinates and full size.
+            // This avoids coordinate mismatches that were causing 3D entities to be scissored out.
+            editorUI.drawQuestIcon(graphics, quest, x, y, size);
 
             // PASS 2b: DRAW CLAIM NOTIFICATION BADGE
             // Only show if the quest is completed and has at least one unclaimed reward
@@ -2461,12 +2454,21 @@ public class QuestScreen extends Screen {
                             this.selectedQuest.getTasks().set(index, this.taskToModify);
                         }
                     }
-                // Apply temporary icon state on Save
+                
+                // FIX: Enforce exclusivity (Radio Button behavior)
+                // If this task is being set as the icon, clear the flag from all other tasks
                 if (this.tempUseAsIcon) {
+                    for (QuestTask t : this.selectedQuest.getTasks()) {
+                        t.setIcon(false);
+                    }
+                    this.taskToModify.setIcon(true);
                     this.selectedQuest.setUseTaskIcon(true);
                     this.selectedQuest.setLogo(this.taskToModify.getIconStack().getItem());
-                } else if (this.selectedQuest.isUseTaskIcon() && this.selectedQuest.getLogo() == this.taskToModify.getIconStack().getItem()) {
-                    this.selectedQuest.setUseTaskIcon(false);
+                } else {
+                    this.taskToModify.setIcon(false);
+                    // Only disable the quest's task icon mode if NO tasks are providers anymore
+                    boolean anyIcons = this.selectedQuest.getTasks().stream().anyMatch(QuestTask::isIcon);
+                    if (!anyIcons) this.selectedQuest.setUseTaskIcon(false);
                 }
                     updateQuestStates();
                     saveChapterData(this.selectedQuest.getChapterName()); // SAVE TRIGGER: Task added/updated
@@ -3386,12 +3388,12 @@ public class QuestScreen extends Screen {
                 if (action.equals("Edit")) {
                     this.originalTask = this.sidebarTargetTask;
                     QuestTask t = this.originalTask;
-                    this.taskToModify = new QuestTask(t.getId(), t.getType(), t.getTargetId(), t.getName(), t.getRequiredAmount(), t.getCurrentAmount(), t.isOptional(), t.isRepeatable(), t.isConsume(), t.getState(), t.getTargetX(), t.getTargetY(), t.getTargetZ());
+                    this.taskToModify = new QuestTask(t.getId(), t.getType(), t.getTargetId(), t.getName(), t.getRequiredAmount(), t.getCurrentAmount(), t.isOptional(), t.isRepeatable(), t.isConsume(), t.getState(), t.getTargetX(), t.getTargetY(), t.getTargetZ(), t.isIcon());
                     this.isTaskEditorOpen = true;
                     this.editorUI.isTaskMode = true;
                     this.editorUI.currentTaskType = this.taskToModify.getType();
-                    // Initialize temp state from current quest settings
-                    this.tempUseAsIcon = this.selectedQuest.isUseTaskIcon() && this.selectedQuest.getLogo() == t.getIconStack().getItem();
+                    // FIX: Initialize state from the explicit boolean field
+                    this.tempUseAsIcon = t.isIcon();
                 } else if (action.equals("Move")) {
                     this.movingTask = this.sidebarTargetTask;
                 } else if (action.equals("Complete")) {

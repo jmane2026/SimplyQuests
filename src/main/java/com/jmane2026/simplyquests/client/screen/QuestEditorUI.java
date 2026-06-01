@@ -7,6 +7,7 @@ import com.jmane2026.simplyquests.quest.QuestTask;
 import com.jmane2026.simplyquests.data.QuestChapter;
 import com.jmane2026.simplyquests.data.QuestGroup;
 import com.jmane2026.simplyquests.events.QuestServerEvents;
+import com.jmane2026.simplyquests.SimplyQuests;
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.gui.Font;
 import net.minecraft.client.gui.GuiGraphicsExtractor;
@@ -24,6 +25,7 @@ import net.minecraft.world.level.Level;
 import net.minecraft.util.Util;
 import net.minecraft.world.item.Item;
 import net.minecraft.world.item.ItemStack;
+import org.joml.Matrix3x2f;
 
 import java.util.*;
 import java.util.List;
@@ -602,47 +604,48 @@ public class QuestEditorUI {
                 }
             }
         } else if (type == QuestTask.TaskType.KILL) {
-            for (EntityType<?> et : BuiltInRegistries.ENTITY_TYPE) {
-                // Filter out non-living misc entities (boats, arrows, etc.)
-                if (et.getCategory() != MobCategory.MISC) {
-                    Identifier id = BuiltInRegistries.ENTITY_TYPE.getKey(et);
-                    if (id != null) {
-                        String idStr = id.toString().toLowerCase();
-                        String name = et.getDescription().getString().toLowerCase();
-                        if (idStr.contains(q) || name.contains(q)) {
-                            results.add(idStr);
+            if (q.startsWith("#")) {
+                String tagQuery = q.substring(1);
+                BuiltInRegistries.ENTITY_TYPE.getTags()
+                        .filter(set -> set.stream().anyMatch(h -> h.value().getCategory() != MobCategory.MISC))
+                        .map(set -> set.key().location().toString())
+                        .filter(path -> path.contains(tagQuery))
+                        .map(path -> "#" + path)
+                        .forEach(results::add);
+            } else {
+                for (EntityType<?> et : BuiltInRegistries.ENTITY_TYPE) {
+                    if (et.getCategory() != MobCategory.MISC) {
+                        Identifier id = BuiltInRegistries.ENTITY_TYPE.getKey(et);
+                        if (id != null) {
+                            String idStr = id.toString().toLowerCase();
+                            String name = et.getDescription().getString().toLowerCase();
+                            if (idStr.contains(q) || name.contains(q)) {
+                                results.add(idStr);
+                            }
                         }
                     }
                 }
             }
         } else if (type == QuestTask.TaskType.OBSERVE) {
-            // OBSERVE targets can be Entities OR Blocks
-            for (EntityType<?> et : BuiltInRegistries.ENTITY_TYPE) {
-                if (et.getCategory() != MobCategory.MISC) {
-                    Identifier id = BuiltInRegistries.ENTITY_TYPE.getKey(et);
-                    if (id != null && (id.toString().contains(q) || et.getDescription().getString().toLowerCase().contains(q))) {
-                        results.add(id.toString());
+            if (q.startsWith("#")) {
+                String tagQuery = q.substring(1);
+                BuiltInRegistries.ENTITY_TYPE.getTags()
+                        .filter(set -> set.stream().anyMatch(h -> h.value().getCategory() != MobCategory.MISC))
+                        .map(set -> set.key().location().toString()).filter(p -> p.contains(tagQuery))
+                        .map(p -> "#" + p).forEach(results::add);
+                BuiltInRegistries.BLOCK.getTags()
+                        .map(set -> set.key().location().toString()).filter(p -> p.contains(tagQuery))
+                        .map(p -> "#" + p).forEach(results::add);
+            } else {
+                for (EntityType<?> et : BuiltInRegistries.ENTITY_TYPE) {
+                    if (et.getCategory() != MobCategory.MISC) {
+                        Identifier id = BuiltInRegistries.ENTITY_TYPE.getKey(et);
+                        if (id != null && (id.toString().contains(q) || et.getDescription().getString().toLowerCase().contains(q)))
+                            results.add(id.toString());
                     }
                 }
-            }
-            for (Identifier id : BuiltInRegistries.BLOCK.keySet()) {
-                if (id.toString().contains(q)) {
-                    results.add(id.toString());
-                }
-            }
-        } else if (type == QuestTask.TaskType.OBSERVE) {
-            // OBSERVE targets can be Entities OR Blocks
-            for (EntityType<?> et : BuiltInRegistries.ENTITY_TYPE) {
-                if (et.getCategory() != MobCategory.MISC) {
-                    Identifier id = BuiltInRegistries.ENTITY_TYPE.getKey(et);
-                    if (id != null && (id.toString().contains(q) || et.getDescription().getString().toLowerCase().contains(q))) {
-                        results.add(id.toString());
-                    }
-                }
-            }
-            for (Identifier id : BuiltInRegistries.BLOCK.keySet()) {
-                if (id.toString().contains(q)) {
-                    results.add(id.toString());
+                for (Identifier id : BuiltInRegistries.BLOCK.keySet()) {
+                    if (id.toString().contains(q)) results.add(id.toString());
                 }
             }
         } else if (type == QuestTask.TaskType.BIOME) {
@@ -807,7 +810,7 @@ public class QuestEditorUI {
                         }
 
                         if (iy >= b.y() + b.barHeight() && iy < b.y() + b.h() - 1) {
-                            QuestTask temp = new QuestTask("", taskType, targetId, "", 1, 0, false, false, false, QuestTask.TaskState.INCOMPLETE, 0, 0, 0);
+                            QuestTask temp = new QuestTask("", taskType, targetId, "", 1, 0, false, false, false, QuestTask.TaskState.INCOMPLETE, 0, 0, 0, false);
                             drawTaskIcon(graphics, temp, 0, innerColor, ix, iy, mouseX, mouseY, cellSize - 2);
                             if (taskType == QuestTask.TaskType.BIOME) {
                                 graphics.text(font, temp.getTargetDisplayName(), ix + 20, iy + 4, QuestScreen.COL_TEXT);
@@ -816,7 +819,7 @@ public class QuestEditorUI {
                     }
                     graphics.disableScissor();
                     if (hoveredTarget != null) {
-                        QuestTask tempForName = new QuestTask("", taskType, hoveredTarget, "", 1, 0, false, false, false, QuestTask.TaskState.INCOMPLETE, 0, 0, 0);
+                        QuestTask tempForName = new QuestTask("", taskType, hoveredTarget, "", 1, 0, false, false, false, QuestTask.TaskState.INCOMPLETE, 0, 0, 0, false);
                         drawCustomTooltip(graphics, tempForName.getTargetDisplayName(), mouseX, mouseY);
                     }
                 }
@@ -854,61 +857,29 @@ public class QuestEditorUI {
 
         // Entity Rendering Pass
         if (task.getType() == QuestTask.TaskType.KILL || task.getType() == QuestTask.TaskType.OBSERVE) {
-            Identifier loc = Identifier.tryParse(task.getTargetId());
-            if (loc != null && !loc.getPath().equals("air")) {
-                var optHolder = BuiltInRegistries.ENTITY_TYPE.get(loc);
-                if (optHolder.isPresent()) {
-                    EntityType<?> type = optHolder.get().value();
-
-                    if (type != null) {
-                        // 1. Manually check cache and create entity
-                        LivingEntity living = entityCache.get(type);
-                        if (living == null) {
-                            try {
-                                // Ensure Level is valid for creation
-                                Level level = Minecraft.getInstance().level;
-                                if (level == null) return;
-
-                                // Explicitly cast to raw EntityType to satisfy compiler check for create(Level, Reason)
-                                EntityType rawType = (EntityType) type;
-                                Entity created = rawType.create(level, EntitySpawnReason.COMMAND);
-                                if (created instanceof LivingEntity le) {
-                                    entityCache.put(type, le);
-                                    living = le;
-                                }
-                            } catch (Exception ignored) {
-                                // If level-based creation fails, we fall back to the sword icon
-                            }
+            String targetId = task.getTargetId();
+            if (targetId.startsWith("#")) {
+                try {
+                    TagKey<EntityType<?>> tagKey = TagKey.create(Registries.ENTITY_TYPE, Identifier.parse(targetId.substring(1)));
+                    List<EntityType<?>> validList = new ArrayList<>();
+                    BuiltInRegistries.ENTITY_TYPE.get(tagKey).ifPresent(set -> {
+                        for (Holder<EntityType<?>> h : set) {
+                            if (h.value().getCategory() != MobCategory.MISC) validList.add(h.value());
                         }
-
-                        if (living != null) {
-                            float maxDim = Math.max(living.getBbHeight(), living.getBbWidth());
-
-                            // THREE-ZONE PIECEWISE SCALING
-                            // Zone 1: 0.8 - 2.0 (Tiny to Humanoid) - Flatter ramp
-                            // Zone 2: 2.0 - 4.0 (Large/Wide) - Restrictive downscaling
-                            // Zone 3: 4.0 - 16.0 (Massive) - Aggressive boost
-                            float multiplier;
-
-                            if (maxDim <= 2.0f) {
-                                // Zone 1: Boosted multipliers for small/humanoid mobs
-                                // progress calculated from 0.1 to 2.0
-                                float progress = Math.max(0, (maxDim - 0.1f) / (2.0f - 0.1f));
-                                multiplier = 0.48f + (progress * (0.28f - 0.48f));
-                            } else if (maxDim <= 4.0f) {
-                                float progress = (maxDim - 2.0f) / (4.0f - 2.0f);
-                                multiplier = 0.28f + (progress * (0.40f - 0.28f));
-                            } else {
-                                float progress = Math.min(1.0f, (maxDim - 4.0f) / (16.0f - 4.0f));
-                                multiplier = 0.40f + (progress * (1.45f - 0.40f));
-                            }
-
-                            int scale = Math.max(1, (int) ((iconSize * multiplier) / Math.max(0.1f, maxDim)));
-                            InventoryScreen.extractEntityInInventoryFollowsMouse(
-                                    graphics, x, y, x + iconSize, y + iconSize, scale, 0, 0, 0, living
-                            );
-                            return; // Entity rendered successfully
-                        }
+                    });
+                    if (!validList.isEmpty()) {
+                        int index = (int) ((Util.getMillis() / 1000) % validList.size());
+                        renderEntityIcon(graphics, validList.get(index), x, y, iconSize);
+                        return;
+                    }
+                } catch (Exception ignored) {}
+            } else {
+                Identifier loc = Identifier.tryParse(targetId);
+                if (loc != null && !loc.getPath().equals("air")) {
+                    var optHolder = BuiltInRegistries.ENTITY_TYPE.get(loc);
+                    if (optHolder.isPresent()) {
+                        renderEntityIcon(graphics, optHolder.get().value(), x, y, iconSize);
+                        return;
                     }
                 }
             }
@@ -959,32 +930,20 @@ public class QuestEditorUI {
         if (quest.isUseTaskIcon() && !quest.getTasks().isEmpty()) {
             QuestTask provider = null;
             for (QuestTask t : quest.getTasks()) {
-                if (t.getTargetId().startsWith("#")) {
-                    provider = t;
-                    break;
-                } else if ((t.getType() == QuestTask.TaskType.CHECKBOX && quest.getLogo() == Items.AIR) ||
-                        (t.getIconStack().getItem() == quest.getLogo())) {
+                if (t.isIcon()) {
                     provider = t;
                     break;
                 }
             }
+            // Legacy Fallback
+            if (provider == null) provider = quest.getTasks().get(0);
 
             if (provider != null) {
-                if (provider.getTargetId().startsWith("#")) {
-                    try {
-                        Identifier loc = Identifier.parse(provider.getTargetId().substring(1));
-                        TagKey<Item> tagKey = TagKey.create(Registries.ITEM, loc);
-                        HolderSet.Named<Item> foundSet = BuiltInRegistries.ITEM.getTags()
-                                .filter(s -> s.key().equals(tagKey))
-                                .findFirst().orElse(null);
-
-                        if (foundSet != null && foundSet.size() > 0) {
-                            int index = (int) ((Util.getMillis() / 1000) % foundSet.size());
-                            Item cyclingItem = foundSet.stream().skip(index).findFirst().map(Holder::value).orElse(Items.BARRIER);
-                            renderCenteredItem(graphics, new ItemStack(cyclingItem), x, y, size);
-                            return;
-                        }
-                    } catch (Exception ignored) {}
+                String targetId = provider.getTargetId();
+                // Revert: Entity tasks on the canvas now use a standard sword icon to avoid coordinate conflicts
+                if (provider.getType() == QuestTask.TaskType.KILL || provider.getType() == QuestTask.TaskType.OBSERVE) {
+                    renderCenteredItem(graphics, new ItemStack(Items.IRON_SWORD), x, y, size);
+                    return;
                 } else if (provider.getType() == QuestTask.TaskType.CHECKBOX) {
                     drawCheckmark(graphics, x, y, size);
                     return;
@@ -1030,8 +989,8 @@ public class QuestEditorUI {
     }
 
     private void renderCenteredItem(GuiGraphicsExtractor graphics, ItemStack stack, int x, int y, int iconSize) {
-        // FIX: Balanced scale to 0.65 for consistent visibility without crowding the node borders
-        float itemScale = (iconSize / 16f) * 0.65f;
+        // Balanced scale to 0.55 for consistent visibility without crowding the node borders (approx 2-3px reduction)
+        float itemScale = (iconSize / 16f) * 0.55f;
         // Calculate internal offset to center the scaled item within the iconSize box
         float offset = (iconSize - (16 * itemScale)) / 2f;
 
@@ -1689,6 +1648,111 @@ public class QuestEditorUI {
             this.cursorIndex = newGlobalIndex;
             this.selectionStart = -1;
             this.selectionEnd = -1;
+        }
+    }
+
+    private void renderEntityIcon(GuiGraphicsExtractor graphics, EntityType<?> type, int x, int y, int iconSize) {
+        if (type == null) return;
+        LivingEntity living = entityCache.get(type);
+        if (living == null) {
+            try {
+                Level level = Minecraft.getInstance().level;
+                if (level == null) return;
+                Entity created = type.create(level, EntitySpawnReason.COMMAND);
+                if (created instanceof LivingEntity le) {
+                    entityCache.put(type, le);
+                    living = le;
+                }
+            } catch (Exception ignored) {}
+        }
+
+        if (living != null) {
+            float maxDim = Math.max(living.getBbHeight(), living.getBbWidth());
+
+            // THREE-ZONE PIECEWISE SCALING
+            float multiplier;
+            if (maxDim <= 2.0f) {
+                float progress = Math.max(0, (maxDim - 0.1f) / (2.0f - 0.1f));
+                multiplier = 0.48f + (progress * (0.28f - 0.48f));
+            } else if (maxDim <= 4.0f) {
+                float progress = (maxDim - 2.0f) / (4.0f - 2.0f);
+                multiplier = 0.28f + (progress * (0.40f - 0.28f));
+            } else {
+                float progress = Math.min(1.0f, (maxDim - 4.0f) / (16.0f - 4.0f));
+                multiplier = 0.40f + (progress * (1.45f - 0.40f));
+            }
+
+            int scale = Math.max(1, (int) ((iconSize * multiplier) / Math.max(0.1f, maxDim)));
+
+            SimplyQuests.LOGGER.info("[TASK RENDER] Type: {} | Grid: ({}, {}) | Size: {} | Scale: {}", type.getDescription().getString(), x, y, iconSize, scale);
+
+            InventoryScreen.extractEntityInInventoryFollowsMouse(
+                    graphics, x, y, x + iconSize, y + iconSize, scale, 0, 0, 0, living
+            );
+        }
+    }
+
+    /**
+     * Dedicated renderer for Quest Nodes on the main canvas.
+     * Uses Local Origin translation to bypass Scissor Box coordinate conflicts.
+     */
+    private void renderQuestEntityIcon(GuiGraphicsExtractor graphics, EntityType<?> type, int x, int y, int iconSize) {
+        if (type == null) return;
+        LivingEntity living = entityCache.get(type);
+        if (living == null) {
+            try {
+                Level level = Minecraft.getInstance().level;
+                if (level == null) return;
+                Entity created = type.create(level, EntitySpawnReason.COMMAND);
+                if (created instanceof LivingEntity le) {
+                    entityCache.put(type, le);
+                    living = le;
+                }
+            } catch (Exception ignored) {}
+        }
+
+        if (living != null) {
+            float maxDim = Math.max(living.getBbHeight(), living.getBbWidth());
+            if (maxDim <= 0) maxDim = 1.0f;
+
+            // 1. Piecewise Scaling (Your exact logic)
+            float multiplier;
+            if (maxDim <= 2.0f) multiplier = 0.48f + (Math.max(0, (maxDim - 0.1f) / (2.0f - 0.1f)) * (0.28f - 0.48f));
+            else if (maxDim <= 4.0f) multiplier = 0.28f + (((maxDim - 2.0f) / (4.0f - 2.0f)) * (0.40f - 0.28f));
+            else multiplier = 0.40f + (Math.min(1.0f, (maxDim - 4.0f) / (16.0f - 4.0f)) * (1.45f - 0.40f));
+
+            // 2. Sample Screen Position
+            // We translate to the node's position and immediately sample the matrix to find the screen pixels.
+            graphics.pose().pushMatrix();
+            graphics.pose().translate(x, y);
+            Matrix3x2f matrix = graphics.pose();
+            float screenX = matrix.m20();
+            float screenY = matrix.m21();
+            float zoom = matrix.m00();
+            graphics.pose().popMatrix(); // Immediately return to the main canvas stack
+
+            // 3. Absolute Projection
+            // We calculate the physical pixel coordinates for the renderer.
+            float sSize = iconSize * zoom;
+            int feetY = (int) (screenY + (sSize * 0.85f));
+            int centerX = (int) (screenX + (sSize / 2f));
+            int centerY = (int) (screenY + (sSize / 2f));
+            int scaledEntity = (int) (Math.max(1, (iconSize * multiplier) / Math.max(0.1f, maxDim)) * zoom);
+
+            // 4. Clean Render Pass
+            // We push and reset to Identity so the InventoryRenderer works in screen space.
+            graphics.pose().pushMatrix();
+            graphics.pose().identity();
+            
+            InventoryScreen.extractEntityInInventoryFollowsMouse(
+                    graphics, 
+                    (int)screenX, (int)screenY, (int)(screenX + sSize), feetY,
+                    scaledEntity, 
+                    centerX, centerY, centerX, 
+                    living
+            );
+            
+            graphics.pose().popMatrix();
         }
     }
 }

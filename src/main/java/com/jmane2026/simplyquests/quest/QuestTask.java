@@ -6,8 +6,10 @@ import com.mojang.serialization.codecs.RecordCodecBuilder;
 import net.minecraft.core.Holder;
 import net.minecraft.core.registries.BuiltInRegistries;
 import net.minecraft.resources.Identifier;
+import net.minecraft.tags.TagKey;
 import net.minecraft.util.StringRepresentable;
 import net.minecraft.world.entity.EntityType;
+import net.minecraft.world.entity.MobCategory;
 import net.minecraft.world.item.Item;
 import net.minecraft.world.item.ItemStack;
 import net.minecraft.world.item.Items;
@@ -52,9 +54,11 @@ public class QuestTask {
             Codec.BOOL.optionalFieldOf("consume", false).forGetter(QuestTask::isConsume),
             Codec.INT.optionalFieldOf("targetX", 0).forGetter(QuestTask::getTargetX),
             Codec.INT.optionalFieldOf("targetY", 0).forGetter(QuestTask::getTargetY),
-            Codec.INT.optionalFieldOf("targetZ", 0).forGetter(QuestTask::getTargetZ)
-    ).apply(instance, (id, type, targetId, name, requiredAmount, isOptional, isRepeatable, consume, tx, ty, tz) ->
-            new QuestTask(id, type, targetId, name, requiredAmount, 0, isOptional, isRepeatable, consume, TaskState.INCOMPLETE, tx, ty, tz)));
+            Codec.INT.optionalFieldOf("targetZ", 0).forGetter(QuestTask::getTargetZ),
+            Codec.BOOL.optionalFieldOf("isIcon", false).forGetter(QuestTask::isIcon)
+    ).apply(instance, (id, type, targetId, name, requiredAmount, isOptional, isRepeatable, consume, tx, ty, tz, isIcon) ->
+            new QuestTask(id, type, targetId, name, requiredAmount, 0, isOptional, isRepeatable, consume, TaskState.INCOMPLETE, tx, ty, tz, isIcon)));
+
 
     private String id;
     private TaskType type;
@@ -69,8 +73,9 @@ public class QuestTask {
     private int targetX;
     private int targetY;
     private int targetZ;
+    private boolean isIcon;
 
-    public QuestTask(String id, TaskType type, String targetId, String name, int requiredAmount, int currentAmount, boolean optional, boolean repeatable, boolean consume, TaskState state, int targetX, int targetY, int targetZ) {
+    public QuestTask(String id, TaskType type, String targetId, String name, int requiredAmount, int currentAmount, boolean optional, boolean repeatable, boolean consume, TaskState state, int targetX, int targetY, int targetZ, boolean isIcon) {
         this.id = id;
         this.type = type;
         this.targetId = targetId;
@@ -84,6 +89,7 @@ public class QuestTask {
         this.targetX = targetX;
         this.targetY = targetY;
         this.targetZ = targetZ;
+        this.isIcon = isIcon;
     }
 
     // --- GETTERS & SETTERS ---
@@ -126,6 +132,9 @@ public class QuestTask {
     public int getTargetZ() { return targetZ; }
     public void setTargetZ(int targetZ) { this.targetZ = targetZ; }
 
+    public boolean isIcon() { return isIcon; }
+    public void setIcon(boolean icon) { this.isIcon = icon; }
+
     public ItemStack getIconStack() {
         try {
             String raw = this.targetId;
@@ -139,6 +148,24 @@ public class QuestTask {
 
             return switch (this.type) {
                 case KILL -> {
+                    if (this.targetId.startsWith("#")) {
+                        try {
+                            TagKey<EntityType<?>> tagKey = TagKey.create(net.minecraft.core.registries.Registries.ENTITY_TYPE, loc);
+                            // Resolve the first valid mob in the tag to find a spawn egg icon
+                            EntityType<?> firstMatch = BuiltInRegistries.ENTITY_TYPE.get(tagKey)
+                                    .flatMap(set -> set.stream()
+                                            .map(Holder::value)
+                                            .filter(et -> et.getCategory() != MobCategory.MISC)
+                                            .findFirst()).orElse(null);
+
+                            if (firstMatch != null) {
+                                for (Item i : BuiltInRegistries.ITEM) {
+                                    if (i instanceof SpawnEggItem egg && egg.getType(ItemStack.EMPTY) == firstMatch) yield new ItemStack(i);
+                                }
+                            }
+                        } catch (Exception ignored) {}
+                    }
+
                     Optional<Holder.Reference<EntityType<?>>> entityHolder = BuiltInRegistries.ENTITY_TYPE.get(loc);
                     if (entityHolder.isPresent()) {
                         Object rawValue = entityHolder.get().value();

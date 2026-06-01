@@ -177,7 +177,7 @@ public class Quest {
         this.dependencies = new ArrayList<>(other.dependencies);
         this.tasks = new ArrayList<>();
         for (QuestTask task : other.tasks) {
-            this.tasks.add(new QuestTask(task.getId(), task.getType(), task.getTargetId(), task.getName(), task.getRequiredAmount(), task.getCurrentAmount(), task.isOptional(), task.isRepeatable(), task.isConsume(), task.getState(), task.getTargetX(), task.getTargetY(), task.getTargetZ()));
+            this.tasks.add(new QuestTask(task.getId(), task.getType(), task.getTargetId(), task.getName(), task.getRequiredAmount(), task.getCurrentAmount(), task.isOptional(), task.isRepeatable(), task.isConsume(), task.getState(), task.getTargetX(), task.getTargetY(), task.getTargetZ(), task.isIcon()));
         }
         this.rewards = new ArrayList<>();
         for (QuestReward reward : other.rewards) {

@@ -59,12 +59,19 @@ public class EditorHandler {
             if (screen.originalTask == null) screen.selectedQuest.getTasks().add(task);
             else screen.selectedQuest.getTasks().set(screen.selectedQuest.getTasks().indexOf(screen.originalTask), task);
 
-            // Apply temporary icon state on Save
+            // FIX: Enforce exclusivity for the Quest Icon provider
             if (screen.tempUseAsIcon) {
+                // Unset icon flag for all other tasks in this quest
+                for (QuestTask t : screen.selectedQuest.getTasks()) {
+                    t.setIcon(false);
+                }
+                task.setIcon(true);
                 screen.selectedQuest.setUseTaskIcon(true);
                 screen.selectedQuest.setLogo(task.getIconStack().getItem());
-            } else if (screen.selectedQuest.isUseTaskIcon() && screen.selectedQuest.getLogo() == task.getIconStack().getItem()) {
-                screen.selectedQuest.setUseTaskIcon(false);
+            } else {
+                task.setIcon(false);
+                boolean anyIcons = screen.selectedQuest.getTasks().stream().anyMatch(QuestTask::isIcon);
+                if (!anyIcons) screen.selectedQuest.setUseTaskIcon(false);
             }
 
             screen.saveChapterData(screen.selectedQuest.getChapterName());
@@ -86,6 +93,16 @@ public class EditorHandler {
 
         // 3. Icon Toggle Checkbox
         if (QuestEditorUI.isMouseOver(mouseX, mouseY, px + 15, py + winH - 18, 120, 10)) {
+            screen.tempUseAsIcon = !screen.tempUseAsIcon;
+            QuestScreen.playClickSound();
+            return true;
+        }
+
+        // --- Handle Quest Icon Checkbox Click ---
+        int cbX = px + 15;
+        int cbY = py + winH - 18;
+        // We use a width of 120 to cover both the checkbox and the label text
+        if (QuestEditorUI.isMouseOver(mouseX, mouseY, cbX, cbY, 120, 10)) {
             screen.tempUseAsIcon = !screen.tempUseAsIcon;
             QuestScreen.playClickSound();
             return true;
@@ -163,6 +180,15 @@ public class EditorHandler {
                 screen.isEditorOpen = false;
                 QuestScreen.playClickSound();
             }
+            return true;
+        }
+
+        // --- Handle Quest Icon Checkbox Click ---
+        int cbX = px + 15;
+        int cbY = py + winH - 18;
+        if (QuestEditorUI.isMouseOver(mouseX, mouseY, cbX, cbY, 120, 10)) {
+            screen.tempUseAsIcon = !screen.tempUseAsIcon;
+            QuestScreen.playClickSound();
             return true;
         }
 
