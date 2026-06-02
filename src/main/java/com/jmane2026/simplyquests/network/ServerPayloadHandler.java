@@ -178,16 +178,14 @@ public class ServerPayloadHandler {
         if (!isOp(context)) return;
 
         context.enqueueWork(() -> {
-            // Sanitize name for deletion to match the saved file format
-            Identifier chId = Identifier.fromNamespaceAndPath("simplyquests", payload.chapterName().toLowerCase().replaceAll("[^a-z0-9/._-]", "_"));
-            String internalName = chId.getPath();
-
+            Identifier chId = Identifier.fromNamespaceAndPath("simplyquests", payload.chapterName()); // Now receiving ID
+            String internalId = chId.getPath();
             var manager = QuestServerEvents.getQuestManager();
 
             // 1. Remove from Standalone list in manifest
-            manager.getRootChapters().removeIf(r -> r.name().equals(internalName));
+            manager.getRootChapters().removeIf(r -> r.name().equals(internalId));
             // 2. Remove from any Groups in manifest
-            manager.getGroups().forEach(g -> g.getChapterNames().remove(internalName));
+            manager.getGroups().forEach(g -> g.getChapterNames().remove(internalId));
             
             // Wipe progress for all quests in the deleted chapter for all players
             QuestChapter chapter = QuestServerEvents.getQuestManager().getChapters().get(chId);
@@ -205,7 +203,7 @@ public class ServerPayloadHandler {
             }
 
             manager.saveGroups(manager.getGroups(), manager.getRootChapters());
-            QuestServerEvents.getQuestManager().deleteChapterFile(chId);
+            manager.deleteChapterFile(chId);
             broadcastFullSync();
             QuestServerEvents.refreshAllCaches(((ServerPlayer) context.player()).level().getServer());
         });

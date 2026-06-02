@@ -6,6 +6,7 @@ import java.util.ArrayList;
 import java.util.List;
 
 public class SidebarGroup implements SidebarEntry {
+    private String name;
     private String title;
     private final int titleColor;
     private boolean isExpanded;
@@ -17,19 +18,22 @@ public class SidebarGroup implements SidebarEntry {
         this.isExpanded = false;
     }
 
+    public String getName() { return name != null ? name : title; }
+    public void setName(String name) { this.name = name; }
+
     public String getTitle() { return title; }
     public void setTitle(String title) { this.title = title; }
 
     public int getTitleColor() { return titleColor; }
 
     public boolean isExpanded() {
-        // Look up state in the persistent session manager
-        return QuestPositionManager.isGroupExpanded(this.title);
+        // FIX: Use the unique internal name for tracking expansion state
+        return QuestPositionManager.isGroupExpanded(this.getName());
     }
 
     public void toggleExpanded() {
         boolean nextState = !this.isExpanded();
-        QuestPositionManager.setGroupExpanded(this.title, nextState);
+        QuestPositionManager.setGroupExpanded(this.getName(), nextState);
     }
 
     public List<SidebarChapter> getChapters() {

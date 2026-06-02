@@ -352,6 +352,8 @@ public class QuestScreen extends Screen {
             for (QuestGroup gDef : groupDefinitions) {
                 String displayName = (gDef.getTitle() != null && !gDef.getTitle().isEmpty()) ? gDef.getTitle() : gDef.getName();
                 SidebarGroup g = new SidebarGroup(displayName, gDef.getColor());
+                // Restore the internal ID from the manifest
+                g.setName(gDef.getName());
                 
                 // LOCAL OVERRIDE: Prioritize local expansion preferences over server defaults
                 Boolean localExpanded = QuestClientData.isGroupExpanded(gDef.getName());
@@ -3505,12 +3507,12 @@ public class QuestScreen extends Screen {
                     case 3 -> {
                         // Delete group and all internal quests
                         for (SidebarChapter ch : group.getChapters()) {
-                            String chName = ch.getName();
+                            String chId = ch.getId();
                             // Request server-side file deletion
-                            ClientPacketDistributor.sendToServer(new DeleteChapterPayload(chName));
+                            ClientPacketDistributor.sendToServer(new DeleteChapterPayload(chId));
 
                             allQuests.removeIf(q -> {
-                                if (q.getChapterName().equals(chName)) {
+                                if (q.getChapterName().equals(chId)) {
                                     questLookup.remove(q.getId());
                                     if (this.selectedQuest == q) this.selectedQuest = null;
                                     return true;
@@ -3520,7 +3522,7 @@ public class QuestScreen extends Screen {
                         }
                         sidebarEntries.remove(group);
                         // Tell the server to remove the group from groups.json
-                        ClientPacketDistributor.sendToServer(new DeleteGroupPayload(group.getTitle()));
+                        ClientPacketDistributor.sendToServer(new DeleteGroupPayload(group.getName()));
                         updateQuestStates();
                         saveGroupManifest(); // SAVE TRIGGER: Update groups.json manifest
                     }
@@ -3544,14 +3546,14 @@ public class QuestScreen extends Screen {
                         ClientPacketDistributor.sendToServer(new AdminResetPayload(Optional.empty(), Optional.of(chapter.getId())));
                     }
                     case 4 -> { // Delete
-                        String chapterName = chapter.getName();
+                        String chapterId = chapter.getId();
 
                         // FIX: Request server-side file deletion
-                        ClientPacketDistributor.sendToServer(new DeleteChapterPayload(chapterName));
+                        ClientPacketDistributor.sendToServer(new DeleteChapterPayload(chapterId));
 
                         // 1. Purge all quests belonging to this chapter from memory and the lookup map
                         allQuests.removeIf(q -> {
-                            if (q.getChapterName().equals(chapterName)) {
+                            if (q.getChapterName().equals(chapterId)) {
                                 questLookup.remove(q.getId());
                                 if (this.selectedQuest != null && this.selectedQuest.getId().equals(q.getId())) this.selectedQuest = null;
                                 return true;
@@ -3586,6 +3588,9 @@ public class QuestScreen extends Screen {
 
             if (optionIndex == 0) { //Add Group
                 SidebarGroup newGroup = new SidebarGroup("New Group", COL_TEXT);
+                // Generate a unique internal ID immediately
+                String uniqueId = "group_" + Long.toHexString(System.currentTimeMillis()).substring(8);
+                newGroup.setName(uniqueId);
                 this.sidebarEntries.add(newGroup);
                 this.editingGroup = newGroup;
                 this.sidebarSearchQuery = "";
@@ -3595,6 +3600,9 @@ public class QuestScreen extends Screen {
                 if (!newGroup.isExpanded()) newGroup.toggleExpanded();
             } else if (optionIndex == 1) { //Add Chapter
                 SidebarChapter newChapter = new SidebarChapter("New Chapter");
+                // Generate a unique internal ID (filename) immediately
+                String uniqueId = "chapter_" + Long.toHexString(System.currentTimeMillis()).substring(8);
+                newChapter.setId(uniqueId);
                 this.sidebarEntries.add(newChapter);
                 this.editingChapter = newChapter;
                 this.sidebarTextScrollOffset = 0;
@@ -4022,98 +4030,14 @@ public void checkPendingRefresh() {
     public void stopSidebarEditing(boolean save) {
         if (save) {
             if (editingGroup != null && !sidebarSearchQuery.isEmpty()) {
-                String oldGroup = editingGroup.getTitle();
-                String newGroup = sidebarSearchQuery;
-                if (!Quest.sanitizePath(oldGroup).equals(Quest.sanitizePath(newGroup))) {
-                    // When a group is renamed, all chapters inside it need to be re-saved
-                    // because their internal data (the group they belong to) has changed.
-                    // (Note: This assumes you add a 'group' field to QuestChapter later)
-                    editingGroup.setTitle(newGroup);
-
-                    // IDs contain the group name, so we must update all quests in all chapters of this group
-                    Map<String, String> idChanges = new HashMap<>();
-                    String newGroupId = Quest.sanitizePath(newGroup);
-                    for (SidebarChapter ch : editingGroup.getChapters()) {
-                        for (Quest q : allQuests) {
-                            if (q.getChapterName().equals(ch.getId())) {
-                                String oldId = q.getId();
-                                List<Quest> others = allQuests.stream().filter(quest -> quest != q).toList();
-                                String newId = Quest.generateQuestId(newGroupId, ch.getId(), q.getTitle(), others);
-
-                                q.setId(newId);
-                                idChanges.put(oldId, newId);
-                                questLookup.remove(oldId);
-                                questLookup.put(newId, q);
-
-                                // Fix Task IDs to match new parent
-                                for(QuestTask task : q.getTasks()) {
-                                    task.setId(QuestTask.generateTaskId(newId, task.getName(), q.getTasks()));
-                                }
-                            }
-                        }
-                    }
-                    updateAllDependencies(idChanges);
-
-                    if (idChanges.isEmpty()) {
-                        saveGroupManifest();
-                        editingGroup.getChapters().forEach(ch -> saveChapterData(ch.getId()));
-                    } else {
-                        saveAllChapters(); // Save everything to ensure dependency IDs are updated globally
-                    }
-                } else {
-                    saveGroupManifest();
-                }
+                // FIX: Decouple Title from ID. Update display title, keep internal ID stable.
+                editingGroup.setTitle(sidebarSearchQuery);
+                saveGroupManifest();
             } else if (editingChapter != null && !sidebarSearchQuery.isEmpty()) {
-                String oldChapterId = editingChapter.getId();
-                String newChapter = sidebarSearchQuery;
-                String newChapterId = Quest.sanitizePath(newChapter);
-                if (oldChapterId == null || !Quest.sanitizePath(oldChapterId).equals(newChapterId)) {
-                    if (oldChapterId != null) {
-                        ClientPacketDistributor.sendToServer(new DeleteChapterPayload(oldChapterId));
-                    }
-
-                    String group = findGroupNameForChapter(oldChapterId);
-                    editingChapter.setName(newChapter);
-                    editingChapter.setId(newChapterId);
-
-                    // Update the saved active chapter name if the current one was renamed
-                    if (selectedChapter == editingChapter) QuestClientData.setLastChapter(newChapterId);
-
-                    Map<String, String> idChanges = new HashMap<>();
-                    for (Quest q : allQuests) {
-                        if (q.getChapterName().equals(oldChapterId)) {
-                            String oldId = q.getId();
-
-                            // 1. Update the internal chapter name so the filter doesn't hide it
-                            q.setChapterName(newChapterId);
-
-                            // 2. Regenerate ID because chapter name changed
-                            List<Quest> others = allQuests.stream().filter(quest -> quest != q).toList();
-                            String newId = Quest.generateQuestId(group, newChapterId, q.getTitle(), others);
-
-                            q.setId(newId);
-                            idChanges.put(oldId, newId);
-                            for(QuestTask task : q.getTasks()) {
-                                task.setId(QuestTask.generateTaskId(newId, task.getName(), q.getTasks()));
-                            }
-
-                            // 3. Update lookup maps
-                            questLookup.remove(oldId);
-                            questLookup.put(newId, q);
-                        }
-                    }
-                    updateAllDependencies(idChanges);
-
-                    if (idChanges.isEmpty()) {
-                        saveGroupManifest();
-                        saveChapterData(newChapterId);
-                    } else {
-                        saveAllChapters(); // Global save to fix cross-chapter dependencies
-                    }
-                } else {
-                    saveGroupManifest();
-                    saveChapterData(oldChapterId);
-                }
+                // FIX: Decouple Name from ID. Update display name, keep internal ID stable.
+                editingChapter.setName(sidebarSearchQuery);
+                saveGroupManifest();
+                saveChapterData(editingChapter.getId());
             }
         } else {
             // If canceled and name was empty, we might want to remove the item
@@ -4470,7 +4394,8 @@ public void checkPendingRefresh() {
                     if (chIdx != -1) {
                         groupOrder = i;
                         chapterOrder = chIdx;
-                        groupName = Quest.sanitizePath(group.getTitle());
+                        // FIX: Use the internal ID for ID consistency
+                        groupName = group.getName();
                         break;
                     }
                 }
@@ -4527,7 +4452,7 @@ public void checkPendingRefresh() {
                         .toList();
 
                 groupData.add(new QuestGroup(
-                        Quest.sanitizePath(group.getTitle()),
+                        group.getName(), // FIX: User internal ID as the key
                         group.getTitle(),
                         group.getTitleColor(),
                         i,

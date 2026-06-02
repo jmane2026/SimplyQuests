@@ -231,6 +231,10 @@ public class CanvasHandler {
                         if (button == 0) {
                             if (screen.isSidebarEditing()) screen.stopSidebarEditing(true);
                             SidebarChapter ch = new SidebarChapter("New Chapter");
+                            // Unique ID allows multiple "New Chapter" entries across groups
+                            String uniqueId = "chapter_" + Long.toHexString(System.currentTimeMillis()).substring(8);
+                            ch.setId(uniqueId);
+
                             group.addChapter(ch);
                             screen.editingChapter = ch;
                             screen.editingGroup = null;
@@ -252,7 +256,7 @@ public class CanvasHandler {
                     if (button == 0) {
                         group.toggleExpanded();
                         // FIX: Save expansion state locally instead of globally overwriting the server manifest
-                        QuestClientData.setGroupExpanded(Quest.sanitizePath(group.getTitle()), group.isExpanded());
+                        QuestClientData.setGroupExpanded(group.getName(), group.isExpanded());
                         QuestScreen.playClickSound();
                     } else if (button == 1 && QuestGlobalState.isEditModeEnabled) {
                         screen.openSidebarEntryContextMenu(mouseX, mouseY, group, null);
