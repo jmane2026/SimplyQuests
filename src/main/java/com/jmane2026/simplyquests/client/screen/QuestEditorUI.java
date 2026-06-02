@@ -93,6 +93,8 @@ public class QuestEditorUI {
     private List<Item> cachedIcons = new ArrayList<>();
     private List<String> cachedTargets = new ArrayList<>();
     private List<Quest> cachedDependencies = new ArrayList<>();
+    public int selectedRewardChoiceIndex = -1; // -1 for Primary, 0+ for alternatives
+    public int rewardChoicePage = 0;
 
 
     public record PickerBounds(int x, int y, int w, int h, int barHeight) {}
@@ -405,13 +407,13 @@ public class QuestEditorUI {
 
     // Helper to identify which field was clicked
     public String getFieldAt(double mouseY, int panelY) {
-        int startY = panelY + 30; // FIX: Unified with standardized render startY
-        int relativeY = (int) (mouseY - startY);
-
         String[] activeLabels = isRewardModeOpen ? getRewardLabels(currentRewardType) : (isTaskMode ? getTaskLabels(currentTaskType) : this.labels);
+        
+        // FIX: Match the startY and rowHeight used in the specific render methods
+        int startY = isRewardModeOpen ? panelY + 25 : (isTaskMode ? panelY + 30 : panelY + 30);
+        int rowH = isRewardModeOpen ? 24 : (isTaskMode ? 26 : 22);
 
-        // Use method-specific rowHeight
-        int rowH = (isTaskMode || isRewardModeOpen) ? 26 : 22;
+        int relativeY = (int) (mouseY - startY);
         int clickedRow = relativeY / rowH;
         if (clickedRow >= 0 && clickedRow < activeLabels.length) {
             return activeLabels[clickedRow];
@@ -669,23 +671,77 @@ public class QuestEditorUI {
         int leftMargin = panelX + 15;
         int dividerX = panelX + 90;
         int valueX = dividerX + 10;
-        int rowHeight = 26;
-        int startY = panelY + 30;
+        int rowHeight = 24;
+        int startY = panelY + 25;
 
         String headerText = "Reward Editor";
-        graphics.text(font, Component.literal(headerText), leftMargin, panelY + 10, QuestScreen.COL_TEXT);
-        drawRewardIcon(graphics, reward, QuestScreen.COL_STATE_COMPLETED, QuestScreen.COL_UI_BG, panelX + panelWidth - 35, panelY + 4, 16, false);
+        graphics.text(font, Component.literal(headerText), leftMargin, panelY + 8, QuestScreen.COL_TEXT);
+
+        // --- NEW: CHOICE BAR (Top Right Area) ---
+        int barX = dividerX + 5;
+        int barY = panelY + 3; // Perfectly centered between top and divider
+        int slotSize = 18;
+        int maxSlots = 7;
+
+        // We create a list of all options: [Main Reward, Choice 0, Choice 1, ...]
+        List<QuestReward> allChoices = new ArrayList<>();
+        allChoices.add(reward); // Index -1 maps to the start of this list
+        allChoices.addAll(reward.getSubRewards());
+
+        int totalEntries = allChoices.size() + 1; // +1 for the [+] button
+        int startIdx = rewardChoicePage * maxSlots;
+        int visibleCount = Math.min(maxSlots, totalEntries - startIdx);
+
+        for (int i = 0; i < visibleCount; i++) {
+            int globalIdx = startIdx + i;
+            int ix = barX + (i * 22);
+
+            if (globalIdx < allChoices.size()) {
+                // Draw existing reward choice
+                QuestReward r = allChoices.get(globalIdx);
+                int choiceLogicIdx = globalIdx - 1; // Convert back to -1, 0, 1...
+
+                boolean isSelected = (selectedRewardChoiceIndex == choiceLogicIdx);
+                boolean isHovered = mouseX >= ix && mouseX <= ix + slotSize && mouseY >= barY && mouseY <= barY + slotSize;
+
+                int outerColor = isSelected ? QuestScreen.COL_TEXT_GOLD : QuestScreen.COL_UI_BORDER;
+                int innerColor = isHovered ? QuestScreen.COL_PANEL_HEADER : QuestScreen.COL_UI_BG;
+
+                drawRewardIcon(graphics, r, outerColor, innerColor, ix, barY, slotSize, false);
+            } else {
+                // Draw [+] Button in the last slot
+                boolean isHovered = mouseX >= ix && mouseX <= ix + slotSize && mouseY >= barY && mouseY <= barY + slotSize;
+                QuestShapeRenderer.render(QuestShape.CIRCLE, graphics, ix, barY, slotSize, QuestScreen.COL_UI_BORDER, isHovered ? QuestScreen.COL_PANEL_HEADER : QuestScreen.COL_UI_BG);
+                
+                // FIX: Manually calculate centering and disable shadow (false) for a cleaner, centered look
+                int tx = ix + (slotSize - font.width("+")) / 2;
+                int ty = barY + (slotSize - font.lineHeight) / 2 + 1; // +1 nudge to correct font-cell top-heaviness
+                graphics.text(font, Component.literal("+"), tx, ty, isHovered ? QuestScreen.COL_TEXT_GOLD : QuestScreen.COL_TEXT, false);
+            }
+        }
+
+        // Pagination Arrows
+        if (totalEntries > maxSlots) {
+            if (rewardChoicePage > 0) graphics.text(font, "<", barX - 10, barY + 5, QuestScreen.COL_TEXT);
+            if ((rewardChoicePage + 1) * maxSlots < totalEntries) graphics.text(font, ">", barX + (maxSlots * 22), barY + 5, QuestScreen.COL_TEXT);
+        }
 
         // Layout Dividers
         int footerDividerY = panelY + panelHeight - 24;
         graphics.horizontalLine(panelX, panelX + panelWidth - 1, panelY + 22, QuestScreen.COL_UI_BORDER);
         graphics.horizontalLine(panelX, panelX + panelWidth - 1, footerDividerY, QuestScreen.COL_UI_BORDER);
-
-        // FIX: Start vertical line at the header divider
         graphics.verticalLine(dividerX, panelY + 22, footerDividerY, QuestScreen.COL_UI_BORDER);
 
-        String[] labels = reward.getType() == QuestReward.RewardType.ITEM ? new String[]{"Type", "Target", "Quantity"} :
-                (reward.getType() == QuestReward.RewardType.XP ? new String[]{"Type", "Quantity"} : new String[]{"Type", "Command"});
+        // --- IDENTIFY ACTIVE DATA & SYNC LABELS ---
+        QuestReward activeTarget = reward;
+        if (selectedRewardChoiceIndex >= 0 && selectedRewardChoiceIndex < reward.getSubRewards().size()) {
+            activeTarget = reward.getSubRewards().get(selectedRewardChoiceIndex);
+        }
+
+        // FIX: Update currentRewardType and labels based on the SELECTED choice, not the primary reward.
+        // This allows a bundle to contain a mix of different types (Item, XP, Command).
+        this.currentRewardType = activeTarget.getType();
+        String[] labels = getRewardLabels(this.currentRewardType);
 
         int editBtnWidth = 45;
         int editBtnRightEdge = panelX + panelWidth - 15;
@@ -697,10 +753,10 @@ public class QuestEditorUI {
             graphics.text(font, labels[i] + ":", leftMargin, rowY + 2, QuestScreen.COL_TEXT);
 
             String value = switch (labels[i]) {
-                case "Type" -> toTitleCase(reward.getType().name());
-                case "Target" -> reward.getItem() == Items.AIR ? "None" : reward.getItem().getDefaultInstance().getHoverName().getString();
-                case "Quantity" -> String.valueOf(reward.getCount());
-                case "Command" -> reward.getCommand();
+                case "Type" -> toTitleCase(activeTarget.getType().name());
+                case "Target" -> activeTarget.getItem() == Items.AIR ? "None" : activeTarget.getItem().getDefaultInstance().getHoverName().getString();
+                case "Quantity" -> String.valueOf(activeTarget.getCount());
+                case "Command" -> activeTarget.getCommand();
                 default -> "";
             };
 
@@ -709,7 +765,7 @@ public class QuestEditorUI {
                 drawButton(graphics, mouseX, mouseY, editBtnLeft, rowY, editBtnWidth, 14, "Submit", QuestScreen.COL_BUTTON_BASE);
             } else {
                 String displayVal = truncate(value, maxTextWidth);
-                graphics.text(font, displayVal, valueX, rowY + 2, 0xFFFFFFFF);
+                graphics.text(font, displayVal, valueX, rowY + 2, selectedRewardChoiceIndex == -1 ? QuestScreen.COL_TEXT : QuestScreen.COL_TEXT_GOLD);
                 drawButton(graphics, mouseX, mouseY, editBtnLeft, rowY, editBtnWidth, 14, labels[i].equals("Type") ? "Change" : "Edit", QuestScreen.COL_BUTTON_BASE);
             }
         }
@@ -717,10 +773,9 @@ public class QuestEditorUI {
         // Footer Buttons
         int btnY = panelY + panelHeight - 20;
 
-        // Add Choice Button (Bottom Left)
-        drawButton(graphics, mouseX, mouseY, panelX + 15, btnY, 60, 14, "Add Choice", QuestScreen.COL_BUTTON_BASE);
-        if (!reward.getSubRewards().isEmpty()) {
-            graphics.text(font, "Choices: " + reward.getSubRewards().size(), panelX + 80, btnY + 3, QuestScreen.COL_TEXT_GOLD);
+        // Only show Delete button if we are editing a sub-choice (index >= 0)
+        if (selectedRewardChoiceIndex != -1) {
+            drawButton(graphics, mouseX, mouseY, panelX + 15, btnY, 45, 14, "Delete", QuestScreen.COL_ERROR);
         }
 
         drawButton(graphics, mouseX, mouseY, editBtnLeft - 50, btnY, 45, 14, "Cancel", QuestScreen.COL_BUTTON_BASE);
@@ -936,18 +991,40 @@ public class QuestEditorUI {
                 }
             }
             // Legacy Fallback
-            if (provider == null) provider = quest.getTasks().get(0);
+            // FIX: Added safety check to prevent IndexOutOfBounds when a quest has no tasks
+            if (provider == null && !quest.getTasks().isEmpty()) provider = quest.getTasks().get(0);
 
             if (provider != null) {
                 String targetId = provider.getTargetId();
-                // Revert: Entity tasks on the canvas now use a standard sword icon to avoid coordinate conflicts
+
+                // 1. Entity tasks on the canvas now use a standard sword icon to avoid coordinate conflicts
                 if (provider.getType() == QuestTask.TaskType.KILL || provider.getType() == QuestTask.TaskType.OBSERVE) {
                     renderCenteredItem(graphics, new ItemStack(Items.IRON_SWORD), x, y, size);
                     return;
-                } else if (provider.getType() == QuestTask.TaskType.CHECKBOX) {
+                }
+
+                // 2. Checkbox tasks use the checkmark
+                if (provider.getType() == QuestTask.TaskType.CHECKBOX) {
                     drawCheckmark(graphics, x, y, size);
                     return;
                 }
+
+                // 3. Item Tags (Starts with #) cycle through items
+                if (targetId.startsWith("#")) {
+                    try {
+                        Identifier loc = Identifier.parse(targetId.substring(1));
+                        TagKey<Item> tagKey = TagKey.create(Registries.ITEM, loc);
+                        HolderSet.Named<Item> foundSet = BuiltInRegistries.ITEM.getTags().filter(s -> s.key().equals(tagKey)).findFirst().orElse(null);
+                        if (foundSet != null && foundSet.size() > 0) {
+                            int index = (int) ((Util.getMillis() / 1000) % foundSet.size());
+                            Item cyclingItem = foundSet.stream().skip(index).findFirst().map(Holder::value).orElse(Items.BARRIER);
+                            renderCenteredItem(graphics, new ItemStack(cyclingItem), x, y, size);
+                            return;
+                        }
+                    } catch (Exception ignored) {}
+                }
+
+                // 4. Default: Use the quest's saved logo
                 renderCenteredItem(graphics, new ItemStack(quest.getLogo()), x, y, size);
                 return;
             }
@@ -1006,8 +1083,10 @@ public class QuestEditorUI {
         int index = getIndexForField(fieldName);
         if (index == -1) return -1;
 
-        int startY = panelY + 30; // FIX: Unified with standardized render startY
-        int rowH = (isTaskMode || isRewardModeOpen) ? 26 : 22;
+        // FIX: Match the startY and rowHeight used in the specific render methods
+        int startY = isRewardModeOpen ? panelY + 25 : (isTaskMode ? panelY + 30 : panelY + 30);
+        int rowH = isRewardModeOpen ? 24 : (isTaskMode ? 26 : 22);
+        
         return startY + (index * rowH);
     }
 

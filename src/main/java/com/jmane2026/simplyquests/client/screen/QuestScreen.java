@@ -1472,7 +1472,9 @@ public class QuestScreen extends Screen {
         drawBorder(graphics, x, y, panelW, panelH, COL_UI_BORDER);
         graphics.centeredText(font, Component.literal("Choose a Reward"), x + panelW / 2, y + 10, COL_TEXT_GOLD);
 
-        List<QuestReward> choices = activeChoiceBundle.getSubRewards();
+        List<QuestReward> choices = new ArrayList<>();
+        choices.add(activeChoiceBundle);
+        choices.addAll(activeChoiceBundle.getSubRewards());
         int gridX = x + 15;
         int gridY = y + 30;
         int cols = 5;
@@ -1518,7 +1520,9 @@ public class QuestScreen extends Screen {
         int btnY = y + panelH - 22;
 
         // 1. Grid Interaction
-        List<QuestReward> choices = activeChoiceBundle.getSubRewards();
+        List<QuestReward> choices = new ArrayList<>();
+        choices.add(activeChoiceBundle);
+        choices.addAll(activeChoiceBundle.getSubRewards());
         int gridX = x + 15, gridY = y + 30;
         for (int i = 0; i < choices.size(); i++) {
             int ix = gridX + (i % 5) * 40;
@@ -2459,7 +2463,9 @@ public class QuestScreen extends Screen {
                     } else {
                         // Update existing task in the list
                         int index = this.selectedQuest.getTasks().indexOf(this.originalTask);
-                        if (index != -1) {
+                        // FIX: Fallback to add if index is -1 to prevent crash
+                        if (index == -1) this.selectedQuest.getTasks().add(this.taskToModify);
+                        else {
                             this.selectedQuest.getTasks().set(index, this.taskToModify);
                         }
                     }
@@ -2490,22 +2496,33 @@ public class QuestScreen extends Screen {
                 return true;
             } else if (this.isRewardEditorOpen) {
                 if (editorUI.isQuantityOpen || editorUI.isNameOpen) {
-                    if (editorUI.isQuantityOpen && rewardToModify != null) {
+                    // FIX: Resolve the active target (Parent or Choice) based on the selection index
+                    QuestReward activeTarget = (editorUI.selectedRewardChoiceIndex == -1)
+                            ? rewardToModify
+                            : rewardToModify.getSubRewards().get(editorUI.selectedRewardChoiceIndex);
+
+                    if (editorUI.isQuantityOpen && activeTarget != null) {
                         try {
                             int amount = Integer.parseInt(editorUI.searchQuery.trim());
-                            this.rewardToModify.setCount(amount);
+                            activeTarget.setCount(amount); // Update the specific choice
                         } catch (NumberFormatException ignored) {}
-                    } else if (editorUI.isNameOpen && rewardToModify != null) {
-                        this.rewardToModify.setCommand(editorUI.searchQuery);
+                    } else if (editorUI.isNameOpen && activeTarget != null) {
+                        activeTarget.setCommand(editorUI.searchQuery);
                     }
                     editorUI.closePicker();
                 } else {
+                    // FIX: Discard unconfigured "Ghost" choices before saving via Enter key (Empty Items or Empty Commands)
+                    this.rewardToModify.getSubRewards().removeIf(r -> (r.getType() == QuestReward.RewardType.ITEM && r.getItem() == Items.AIR) ||
+                            (r.getType() == QuestReward.RewardType.COMMAND && r.getCommand().trim().isEmpty()));
+
                     // Act like the Save button for the Reward Editor
                     if (this.originalReward == null) {
                         this.selectedQuest.getRewards().add(this.rewardToModify);
                     } else {
                         int index = this.selectedQuest.getRewards().indexOf(this.originalReward);
-                        if (index != -1) this.selectedQuest.getRewards().set(index, this.rewardToModify);
+                        // FIX: Fallback to add if index is -1 to prevent crash
+                        if (index == -1) this.selectedQuest.getRewards().add(this.rewardToModify);
+                        else this.selectedQuest.getRewards().set(index, this.rewardToModify);
                     }
                     saveChapterData(this.selectedQuest.getChapterName());
                     playClickSound();
@@ -2936,8 +2953,12 @@ public class QuestScreen extends Screen {
 
                 if (isBundle) {
                     // Bundle rendering (Cycling icons)
-                    int cycleIdx = (int)((Util.getMillis() / 1000) % reward.getSubRewards().size());
-                    QuestReward displayReward = reward.getSubRewards().get(cycleIdx);
+                    // FIX: Include the primary reward in the cycling animation
+                    List<QuestReward> allOptions = new ArrayList<>();
+                    allOptions.add(reward);
+                    allOptions.addAll(reward.getSubRewards());
+                    int cycleIdx = (int)((Util.getMillis() / 1000) % allOptions.size());
+                    QuestReward displayReward = allOptions.get(cycleIdx);
 
                     editorUI.drawRewardIcon(graphics, displayReward, circleColor, innerColor, ix, rewardsAreaY, rSlotSize, questDone && !claimed);
                     renderRewardLabel(graphics, displayReward, ix, rewardsAreaY, rSlotSize);
@@ -3199,8 +3220,10 @@ public class QuestScreen extends Screen {
                 graphics.fill(x + 1, optionY + 1, x + w - 1, optionY + 19, COL_HOVER_MENU);
             }
 
-            // Gold if hovered, White if not
-            int textColor = isOptionHovered ? COL_TEXT_GOLD : COL_TEXT;
+            String opt = options.get(i);
+            // Destructive actions like Delete or Reset use COL_ERROR when not hovered to provide a visual warning
+            int textColor = isOptionHovered ? COL_TEXT_GOLD : 
+                (opt.contains("Delete") || opt.contains("Reset") ? COL_ERROR : COL_TEXT);
 
             graphics.text(this.font, Component.literal(options.get(i)), x + 5, optionY + 6, textColor, false);
         }
@@ -3324,14 +3347,11 @@ public class QuestScreen extends Screen {
         // 2. Remove from the lookup map
         this.questLookup.remove(quest.getId());
 
-        // 3. Clean up UI references
-        if (this.selectedQuest == quest) {
-            this.selectedQuest = null;
-        }
+        if (this.selectedQuest == quest) this.selectedQuest = null;
 
         playClickSound();
         updateQuestStates();
-        saveChapterData(quest.getChapterName());
+        ClientPacketDistributor.sendToServer(new DeleteQuestPayload(quest.getId(), quest.getChapterName()));
     }
 
     private void handleContextMenuClick(double mouseX, double mouseY) {
@@ -3347,6 +3367,11 @@ public class QuestScreen extends Screen {
                 QuestReward r = this.originalReward;
                 // Use the Copy Constructor to clone the reward and its sub-rewards
                 this.rewardToModify = new QuestReward(r);
+                
+                // FIX: Reset selection state so it doesn't carry over from the last reward edited
+                this.editorUI.selectedRewardChoiceIndex = -1;
+                this.editorUI.rewardChoicePage = 0;
+                
                 this.isRewardEditorOpen = true;
                 this.editorUI.isRewardModeOpen = true;
             } else if (optionIndex == 1) { // Delete
@@ -3436,8 +3461,8 @@ public class QuestScreen extends Screen {
             if (optionIndex == 0) { // Edit
                 openTextEditor(editingCanvasText);
             } else if (optionIndex == 1) { // Delete
+                ClientPacketDistributor.sendToServer(new DeleteCanvasTextPayload(editingCanvasText.getText(), editingCanvasText.getX(), editingCanvasText.getY(), editingCanvasText.getChapterName()));
                 allCanvasTexts.remove(editingCanvasText);
-                saveChapterData(editingCanvasText.getChapterName());
                 editingCanvasText = null;
             } else if (optionIndex == 2) { // Move
                 this.movingCanvasText = this.editingCanvasText;
@@ -3594,8 +3619,9 @@ public class QuestScreen extends Screen {
             if (optionIndex == 0) { // Create Quest
                 double gridX = snappedX - 12.0;
                 double gridY = snappedY - 12.0;
-                // currentChapter here is already chapter.getId() thanks to our earlier update
-                this.questToModify = new Quest(newId, currentChapter, "New Quest", gridX, gridY);
+                // Add short unique suffix to the ID based on current time to prevent collisions
+                String uniqueId = newId + "_" + Long.toHexString(System.currentTimeMillis()).substring(8);
+                this.questToModify = new Quest(uniqueId, currentChapter, "New Quest", gridX, gridY);
                 this.originalQuest = null;
                 this.isEditorOpen = true;
             } else if (optionIndex == 1) { // Add Text
@@ -3900,6 +3926,10 @@ public class QuestScreen extends Screen {
                 
                 // 3. Update relational dependencies in other quests
                 if (!oldId.equals(newId)) {
+                    // Tell the server to delete the old quest ID to prevent "Zombie" duplicates
+                    // during the server-side Smart Merge
+                    ClientPacketDistributor.sendToServer(new DeleteQuestPayload(oldId, chapter));
+
                     for (Quest q : allQuests) {
                         List<String> deps = q.getDependencies();
                         for (int i = 0; i < deps.size(); i++) {
@@ -3911,6 +3941,11 @@ public class QuestScreen extends Screen {
                     // Update registry maps
                     questLookup.remove(oldId);
                     questLookup.put(newId, originalQuest);
+
+                    // FIX: Also update Task IDs to use the new parent prefix
+                    for (QuestTask task : originalQuest.getTasks()) {
+                        task.setId(QuestTask.generateTaskId(newId, task.getName(), originalQuest.getTasks()));
+                    }
                 }
 
                 // 4. Apply changes
@@ -3927,8 +3962,10 @@ public class QuestScreen extends Screen {
                 originalQuest.setOptional(questToModify.isOptional());
                 originalQuest.setRepeatable(questToModify.isRepeatable());
                 originalQuest.setDependencies(questToModify.getDependencies());
-                originalQuest.setRewards(questToModify.getRewards());
-                originalQuest.setTasks(questToModify.getTasks());
+                
+                // FIX: Removed setTasks and setRewards. These are managed by 
+                // their own editors and should not be overwritten by stale clones.
+                
                 originalQuest.setUseTaskIcon(questToModify.isUseTaskIcon());
 
                 // If title changed, dependencies globally might be broken, save all

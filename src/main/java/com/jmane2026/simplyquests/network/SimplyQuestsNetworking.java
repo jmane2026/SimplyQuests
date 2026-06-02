@@ -38,6 +38,18 @@ public class SimplyQuestsNetworking {
                 ServerPayloadHandler::handleDeleteGroup
         );
 
+        registrar.playToServer(
+                DeleteQuestPayload.TYPE,
+                DeleteQuestPayload.CODEC,
+                ServerPayloadHandler::handleDeleteQuest
+        );
+
+        registrar.playToServer(
+                DeleteCanvasTextPayload.TYPE,
+                DeleteCanvasTextPayload.CODEC,
+                ServerPayloadHandler::handleDeleteCanvasText
+        );
+
         // --- Clientbound Packets (S2C) ---
         // FIX: Using lambdas (p, c) -> Handler.method(p, c) instead of method references Class::method
         // ensures the Dedicated Server never tries to load the client-only Handler class.

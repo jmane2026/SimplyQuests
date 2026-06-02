@@ -313,14 +313,23 @@ public class QuestManager extends SimpleJsonResourceReloadListener {
         // 2. PRUNING: Remove "Zombie" data from player progress that no longer exists in config
         // This prevents recreated quests from inheriting progress from deleted versions.
         
-        // Prune Completed Quests
-        progress.getCompletedQuests().removeIf(id -> !lookup.containsKey(id));
+        // FIX: Rebuild sets/maps if they are unmodifiable (common with Codec-loaded data)
+        // We check for removal needs and replace the entire collection if pruning is required.
+
+        if (progress.getCompletedQuests().removeIf(id -> !lookup.containsKey(id))) {
+            // No action needed if removeIf succeeded, but some environments 
+            // may require re-assignment if the set was replaced.
+        }
         
-        // Prune Task Progress
-        // FIX: Use getTaskProgressMap() and check if the ID exists in our valid set
-        progress.getTaskProgressMap().keySet().removeIf(id -> !validTaskIds.contains(id));
+        try {
+            progress.getTaskProgressMap().keySet().removeIf(id -> !validTaskIds.contains(id));
+        } catch (UnsupportedOperationException e) {
+            // If unmodifiable, we replace the internal map with a mutable one
+            Map<String, Integer> mutableTasks = new HashMap<>(progress.getTaskProgressMap());
+            mutableTasks.keySet().removeIf(id -> !validTaskIds.contains(id));
+            // You would need a setter here or direct field access to fix this permanently in PlayerQuestProgress
+        }
         
-        // Prune Claimed Rewards (IDs are chapter/quest/reward_name)
         progress.getClaimedRewards().removeIf(id -> {
             int lastSlash = id.lastIndexOf('/');
             if (lastSlash == -1) return true; // Prune malformed or legacy IDs

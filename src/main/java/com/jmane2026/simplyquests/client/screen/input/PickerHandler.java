@@ -73,15 +73,34 @@ public class PickerHandler {
 
         if (ui.isTypePickerOpen) {
             int idx = (int)Math.floor((mouseY - b.y() - 5) / 16.0);
-            if (screen.isTaskEditorOpen) {
+            if (ui.isRewardModeOpen) {
+                QuestReward.RewardType[] types = QuestReward.RewardType.values();
+                if (idx >= 0 && idx < types.length) {
+                    // FIX: Identify the specific target within the bundle (Parent or Choice)
+                    QuestReward activeTarget = (ui.selectedRewardChoiceIndex == -1)
+                            ? screen.rewardToModify
+                            : screen.rewardToModify.getSubRewards().get(ui.selectedRewardChoiceIndex);
+
+                    // UPDATE IN-PLACE: Only change the type enum. This preserves choices!
+                    QuestReward.RewardType newType = types[idx];
+                    activeTarget.setType(newType);
+
+                    // Reset fields that no longer apply to the new type to keep the data clean
+                    if (newType == QuestReward.RewardType.XP) activeTarget.setItem(Items.AIR);
+                    if (newType != QuestReward.RewardType.COMMAND) activeTarget.setCommand("");
+
+                    ui.isTypePickerOpen = false;
+                    QuestScreen.playClickSound();
+                }
+            } else if (ui.isTaskMode) {
                 QuestTask.TaskType[] types = QuestTask.TaskType.values();
                 if (idx >= 0 && idx < types.length) {
                     QuestTask.TaskType newType = types[idx];
                     if (screen.taskToModify.getType() != newType) {
+                        // UPDATE IN-PLACE: Change type and reset defaults on existing object
                         screen.taskToModify.setType(newType);
-
-                        // Reset variables to defaults for the new type
                         screen.taskToModify.setRequiredAmount(1);
+
                         switch (newType) {
                             case ITEM -> screen.taskToModify.setTargetId("minecraft:air");
                             case KILL -> screen.taskToModify.setTargetId("minecraft:pig");
@@ -104,17 +123,19 @@ public class PickerHandler {
                 QuestReward.RewardType[] types = QuestReward.RewardType.values();
                 if (idx >= 0 && idx < types.length) {
                     QuestReward.RewardType newType = types[idx];
-                    if (screen.rewardToModify.getType() != newType) {
-                        // Reset Reward data to defaults
-                        screen.rewardToModify = new QuestReward(
-                                screen.rewardToModify.getId(),
-                                newType,
-                                Items.AIR,
-                                1,
-                                "",
-                                new java.util.ArrayList<>()
-                        );
-                    }
+
+                    // FIX: Resolve the active target (Parent or Choice) to update in-place
+                    QuestReward activeTarget = (ui.selectedRewardChoiceIndex == -1)
+                            ? screen.rewardToModify
+                            : screen.rewardToModify.getSubRewards().get(ui.selectedRewardChoiceIndex);
+
+                    // UPDATE IN-PLACE: Only change the type enum. This preserves the Choice Bar list!
+                    activeTarget.setType(newType);
+
+                    // Reset fields that no longer apply to the new type to keep the data clean
+                    if (newType == QuestReward.RewardType.XP) activeTarget.setItem(Items.AIR);
+                    if (newType != QuestReward.RewardType.COMMAND) activeTarget.setCommand("");
+
                     ui.isTypePickerOpen = false;
                     QuestScreen.playClickSound(); }
             }
@@ -154,8 +175,11 @@ public class PickerHandler {
                     Item s = icons.get(itemIdx);
                     if (screen.isEditingChapterIcon) { screen.sidebarTargetChapter.setIconStack(new ItemStack(s)); screen.saveChapterData(screen.sidebarTargetChapter.getName()); }
                     else if (screen.rewardToModify != null) {
-                        // Use setter to preserve subRewards (choices) inside the bundle
-                        screen.rewardToModify.setItem(s);
+                        // FIX: Apply the icon to the currently selected choice/parent
+                        QuestReward activeTarget = (ui.selectedRewardChoiceIndex == -1)
+                                ? screen.rewardToModify
+                                : screen.rewardToModify.getSubRewards().get(ui.selectedRewardChoiceIndex);
+                        activeTarget.setItem(s);
                     }
                     else if (screen.questToModify != null) { screen.questToModify.setLogo(s); screen.questToModify.setUseTaskIcon(false); }
                     ui.closePicker(); screen.isEditingChapterIcon = false;

@@ -6,7 +6,11 @@ import com.jmane2026.simplyquests.quest.Quest;
 import com.jmane2026.simplyquests.quest.QuestReward;
 import com.jmane2026.simplyquests.quest.QuestTask;
 import net.minecraft.client.input.KeyEvent;
+import net.minecraft.world.item.Items;
 import org.lwjgl.glfw.GLFW;
+
+import java.util.ArrayList;
+import java.util.List;
 
 public class EditorHandler {
 
@@ -56,8 +60,14 @@ public class EditorHandler {
 
         // 2. Save / Cancel / Outside
         if (ui.isClickingSave(mouseX, mouseY, px, py, winH)) {
-            if (screen.originalTask == null) screen.selectedQuest.getTasks().add(task);
-            else screen.selectedQuest.getTasks().set(screen.selectedQuest.getTasks().indexOf(screen.originalTask), task);
+            if (screen.originalTask == null) {
+                screen.selectedQuest.getTasks().add(task);
+            } else {
+                int index = screen.selectedQuest.getTasks().indexOf(screen.originalTask);
+                // FIX: Fallback to add if index is -1 to prevent crash
+                if (index != -1) screen.selectedQuest.getTasks().set(index, task);
+                else screen.selectedQuest.getTasks().add(task);
+            }
 
             // FIX: Enforce exclusivity for the Quest Icon provider
             if (screen.tempUseAsIcon) {
@@ -224,6 +234,95 @@ public class EditorHandler {
         QuestReward reward = screen.rewardToModify;
         ui.isTaskMode = false;
 
+        // --- NEW: CHOICE BAR INTERACTION ---
+        int barX = px + 95;
+        int barY = py + 3; // Sync with UI centering (panelY + 3)
+        int maxSlots = 7;
+
+        // Pagination Arrow Clicks
+        List<QuestReward> allOptions = new ArrayList<>();
+        allOptions.add(reward);
+        allOptions.addAll(reward.getSubRewards());
+        int totalEntries = allOptions.size() + 1; // +1 for the [+] button
+
+        if (mouseY >= barY && mouseY <= barY + 18) {
+            // Previous Page
+            if (mouseX >= barX - 12 && mouseX <= barX && ui.rewardChoicePage > 0) {
+                ui.rewardChoicePage--; QuestScreen.playClickSound(); return true;
+            }
+            // Next Page
+            int rightArrowX = barX + (maxSlots * 22);
+            if (mouseX >= rightArrowX && mouseX <= rightArrowX + 12 && (ui.rewardChoicePage + 1) * maxSlots < totalEntries) {
+                ui.rewardChoicePage++; QuestScreen.playClickSound(); return true;
+            }
+        }
+
+        List<QuestReward> choices = reward.getSubRewards();
+
+        if (mouseY >= barY && mouseY <= barY + 18 && mouseX >= barX) {
+            int slotIdx = (int)((mouseX - barX) / 22);
+            int globalIdx = (ui.rewardChoicePage * maxSlots) + slotIdx;
+
+            if (slotIdx >= 0 && slotIdx < maxSlots) {
+                if (globalIdx == 0) { // Clicked Base Reward
+                    ui.selectedRewardChoiceIndex = -1;
+                    QuestScreen.playClickSound(); return true;
+                } else if (globalIdx <= choices.size()) { // Clicked existing Choice
+                    int choiceIdx = globalIdx - 1;
+                    if (button == 1) { // RIGHT CLICK DELETE
+                        // FIX: Ensure list is mutable (Codec lists are immutable by default)
+                        if (!(choices instanceof ArrayList)) {
+                            List<QuestReward> mutable = new ArrayList<>(choices);
+                            mutable.remove(choiceIdx);
+                            reward.setSubRewards(mutable);
+                        } else {
+                            choices.remove(choiceIdx);
+                        }
+                        ui.selectedRewardChoiceIndex = -1;
+                    } else { // LEFT CLICK SELECT
+                        ui.selectedRewardChoiceIndex = choiceIdx;
+                    }
+                    QuestScreen.playClickSound(); return true;
+                } else if (globalIdx == choices.size() + 1) { // Clicked [+]
+                    // 1. Check if the PRIMARY reward (the original choice) is unconfigured (Empty Item or Empty Command)
+                    if ((reward.getType() == QuestReward.RewardType.ITEM && reward.getItem() == Items.AIR) ||
+                        (reward.getType() == QuestReward.RewardType.COMMAND && reward.getCommand().trim().isEmpty())) {
+                        ui.selectedRewardChoiceIndex = -1; // Select the primary reward
+                    } else {
+                        // 2. Check if an unconfigured SUB-choice already exists (Empty Item or Empty Command)
+                        int existingBlankIdx = -1;
+                        for (int j = 0; j < choices.size(); j++) {
+                            QuestReward r = choices.get(j);
+                            if ((r.getType() == QuestReward.RewardType.ITEM && r.getItem() == Items.AIR) ||
+                                (r.getType() == QuestReward.RewardType.COMMAND && r.getCommand().trim().isEmpty())) {
+                                existingBlankIdx = j;
+                                break;
+                            }
+                        }
+
+                        if (existingBlankIdx != -1) {
+                            ui.selectedRewardChoiceIndex = existingBlankIdx;
+                        } else {
+                            // 3. Only add a new choice if all current options are configured.
+                            // This resets the editor fields to "Neutral" defaults for the new slot.
+                            String uniqueId = reward.getId() + "_c" + Long.toHexString(System.currentTimeMillis()).substring(8);
+                            QuestReward newChoice = new QuestReward(uniqueId, QuestReward.RewardType.ITEM, Items.AIR, 1, "", new java.util.ArrayList<>());
+                            choices.add(newChoice);
+                            ui.selectedRewardChoiceIndex = choices.size() - 1;
+                        }
+                    }
+                    // Auto-navigate to the correct page for the selected blank node
+                    ui.rewardChoicePage = (ui.selectedRewardChoiceIndex + 1) / maxSlots;
+                    QuestScreen.playClickSound(); return true;
+                }
+            }
+
+            // Block clicks in the choice bar area from hitting rows underneath
+            return true;
+        }
+
+        QuestReward activeTarget = (ui.selectedRewardChoiceIndex == -1) ? reward : choices.get(ui.selectedRewardChoiceIndex);
+
         // 1. Sub-Editor Submission check (Quantity / Command)
         if (ui.isQuantityOpen || ui.isNameOpen) {
             ui.isRewardModeOpen = true; // Ensure row math uses reward-specific row heights
@@ -231,11 +330,16 @@ public class EditorHandler {
             int rowY = ui.getRowY(openField, py);
 
             if (QuestEditorUI.isMouseOver(mouseX, mouseY, px + 235, rowY, 55, 18)) {
-                screen.keyPressed(new KeyEvent(GLFW.GLFW_KEY_ENTER, 0, GLFW.GLFW_PRESS));
+                // FIX: Manually handle the "Submit" click to ensure changes apply to the active choice
+                if (ui.isQuantityOpen) {
+                    try { activeTarget.setCount(Integer.parseInt(ui.searchQuery.trim())); } catch (Exception ignored) {}
+                } else if (ui.isNameOpen) {
+                    activeTarget.setCommand(ui.searchQuery);
+                }
+                ui.closePicker();
                 return true;
             }
 
-            // Click in text area to cancel highlight
             if (QuestEditorUI.isMouseOver(mouseX, mouseY, px + 100, rowY - 2, 135, 14)) {
                 ui.selectionStart = -1;
                 ui.selectionEnd = -1;
@@ -245,11 +349,33 @@ public class EditorHandler {
 
         // 2. Modal Buttons (Save / Cancel / Outside)
         if (ui.isClickingSave(mouseX, mouseY, px, py, winH)) {
-            if (screen.originalReward == null) screen.selectedQuest.getRewards().add(screen.rewardToModify);
-            else screen.selectedQuest.getRewards().set(screen.selectedQuest.getRewards().indexOf(screen.originalReward), screen.rewardToModify);
+            // FIX: Discard any "Ghost" choices that were added but never configured (Empty Items or Empty Commands)
+            screen.rewardToModify.getSubRewards().removeIf(r -> (r.getType() == QuestReward.RewardType.ITEM && r.getItem() == Items.AIR) ||
+                    (r.getType() == QuestReward.RewardType.COMMAND && r.getCommand().trim().isEmpty()));
+
+            if (screen.originalReward == null) {
+                screen.selectedQuest.getRewards().add(screen.rewardToModify);
+            } else {
+                int index = screen.selectedQuest.getRewards().indexOf(screen.originalReward);
+                // FIX: Fallback to add if index is -1 to prevent crash
+                if (index != -1) screen.selectedQuest.getRewards().set(index, screen.rewardToModify);
+                else screen.selectedQuest.getRewards().add(screen.rewardToModify);
+            }
             screen.saveChapterData(screen.selectedQuest.getChapterName());
             screen.isRewardEditorOpen = false;
             ui.isRewardModeOpen = false;
+            QuestScreen.playClickSound();
+            return true;
+        }
+
+        // 3. Handle Explicit Choice Deletion (Bottom Left Button)
+        int btnY = py + winH - 20;
+        if (ui.selectedRewardChoiceIndex != -1 && QuestEditorUI.isMouseOver(mouseX, mouseY, px + 15, btnY, 45, 14)) {
+            if (!(choices instanceof ArrayList)) {
+                reward.setSubRewards(new ArrayList<>(choices));
+            }
+            reward.getSubRewards().remove(ui.selectedRewardChoiceIndex);
+            ui.selectedRewardChoiceIndex = -1; // Reset to primary reward after deletion
             QuestScreen.playClickSound();
             return true;
         }
@@ -265,23 +391,14 @@ public class EditorHandler {
             return true;
         }
 
-        // 3. Add Choice Button
-        if (QuestEditorUI.isMouseOver(mouseX, mouseY, px + 15, py + winH - 20, 60, 14)) {
-            // Create a sub-reward based on current settings
-            QuestReward choice = new QuestReward(reward.getId() + "/c" + reward.getSubRewards().size(), 
-                reward.getType(), reward.getItem(), reward.getCount(), reward.getCommand(), new java.util.ArrayList<>());
-            reward.getSubRewards().add(choice);
-            QuestScreen.playClickSound(); return true;
-        }
-
         String field = ui.getFieldAt(mouseY, py);
         if (field != null && QuestEditorUI.isMouseOver(mouseX, mouseY, px + 235, ui.getRowY(field, py), 65, 18)) {
             ui.closePicker();
             switch(field) {
                 case "Type" -> ui.isTypePickerOpen = true;
                 case "Target" -> { ui.searchQuery = ""; ui.isIconPickerOpen = true; }
-                case "Quantity" -> { ui.searchQuery = String.valueOf(screen.rewardToModify.getCount()); ui.isQuantityOpen = true; setupText(ui); }
-                case "Command" -> { ui.searchQuery = screen.rewardToModify.getCommand(); ui.isNameOpen = true; setupText(ui); }
+                case "Quantity" -> { ui.searchQuery = String.valueOf(activeTarget.getCount()); ui.isQuantityOpen = true; setupText(ui); }
+                case "Command" -> { ui.searchQuery = activeTarget.getCommand(); ui.isNameOpen = true; setupText(ui); }
             }
             QuestScreen.playClickSound();
             return true;

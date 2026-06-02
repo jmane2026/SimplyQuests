@@ -5,6 +5,7 @@ import com.mojang.serialization.Codec;
 import com.mojang.serialization.codecs.RecordCodecBuilder;
 import net.minecraft.core.Holder;
 import net.minecraft.core.registries.BuiltInRegistries;
+import net.minecraft.core.registries.Registries;
 import net.minecraft.resources.Identifier;
 import net.minecraft.tags.TagKey;
 import net.minecraft.util.StringRepresentable;
@@ -191,6 +192,16 @@ public class QuestTask {
                 }
                 case BIOME -> new ItemStack(Items.GRASS_BLOCK);
                 case ITEM, OBSERVE -> {
+                    if (this.targetId.startsWith("#")) {
+                        try {
+                            TagKey<Item> tagKey = TagKey.create(Registries.ITEM, loc);
+                            Optional<Item> firstItem = BuiltInRegistries.ITEM.get(tagKey)
+                                    .flatMap(set -> set.stream().findFirst())
+                                    .map(Holder::value);
+                            if (firstItem.isPresent()) yield new ItemStack(firstItem.get());
+                        } catch (Exception ignored) {}
+                    }
+
                     // Try to find a direct item/block first
                     Optional<Item> item = BuiltInRegistries.ITEM.get(loc).map(Holder::value);
                     if (item.isPresent() && item.get() != Items.AIR) yield new ItemStack(item.get());
