@@ -195,47 +195,52 @@ public class QuestServerEvents {
                 if (quest == null) return;
                 PlayerQuestProgress progress = player.getData(QuestAttachmentRegistry.PLAYER_PROGRESS);
 
-                if (payload.taskId().isPresent()) {
-                    // Complete/Reset specific task
-                    QuestTask task = quest.getTasks().stream()
-                            .filter(t -> t.getId().equals(payload.taskId().get()))
-                            .findFirst().orElse(null);
-                    if (task != null) {
-                        progress.setTaskAmount(task.getId(), payload.complete() ? task.getRequiredAmount() : 0);
-                        player.setData(QuestAttachmentRegistry.PLAYER_PROGRESS, progress); // FORCE NBT SAVE
-                    }
-                } else {
-                    // Complete/Reset whole quest
-                    for (QuestTask task : quest.getTasks()) {
-                        progress.setTaskAmount(task.getId(), payload.complete() ? task.getRequiredAmount() : 0);
-                    }
-                    if (!payload.complete()) {
-                        // If resetting the whole quest, clear its completion status
-                        progress.resetQuest(quest.getId());
-                        // Also clear all task progress for this quest
+                if (!payload.complete()) {
+                    // --- RESET LOGIC ---
+                    // 1. A quest cannot be complete if any part of it was reset
+                    String qId = quest.getId();
+                    progress.getCompletedQuests().remove(qId);
+
+                    // 2. Unclaim rewards specifically for THIS quest.
+                    // We check for the exact ID or the questID followed by a slash to prevent 
+                    // accidental wipes of quests with similar prefixes (e.g., 'test' vs 'test_2')
+                    progress.getClaimedRewards().removeIf(id -> id.equals(qId) || id.startsWith(qId + "/"));
+
+                    if (payload.taskId().isPresent()) {
+                        // Reset specific task
+                        progress.setTaskAmount(payload.taskId().get(), 0);
+                    } else {
+                        // Reset ALL tasks if the whole quest was targeted
                         for (QuestTask task : quest.getTasks()) {
                             progress.resetTaskProgress(task.getId());
                         }
-                        // Also clear all claimed rewards for this quest
-                        for (QuestReward reward : quest.getRewards()) {
-                            progress.unclaimReward(reward.getId());
-                        }
+
                         // If this quest was part of a completed chapter, reset the chapter completion as well
-                        // This ensures the chapter completed toast can be re-triggered if all quests are reset
+                        String chName = quest.getChapterName();
                         QuestChapter chapter = QUEST_MANAGER.getChapters().values().stream()
-                                .filter(c -> c.getName().equals(quest.getChapterName()))
+                                .filter(c -> c.getName().equals(chName))
                                 .findFirst().orElse(null);
                         if (chapter != null) {
                             progress.resetChapter(chapter.getName());
                         }
                     }
-                    player.setData(QuestAttachmentRegistry.PLAYER_PROGRESS, progress); // FORCE NBT SAVE
+                } else {
+                    // --- ADMIN FORCE-COMPLETE LOGIC ---
+                    if (payload.taskId().isPresent()) {
+                        QuestTask task = quest.getTasks().stream().filter(t -> t.getId().equals(payload.taskId().get())).findFirst().orElse(null);
+                        if (task != null) progress.setTaskAmount(task.getId(), task.getRequiredAmount());
+                    } else {
+                        for (QuestTask task : quest.getTasks()) {
+                            progress.setTaskAmount(task.getId(), task.getRequiredAmount());
+                        }
+                        progress.completeQuest(quest.getId());
+                    }
                 }
-                syncAndCheckCompletions(player);
-                
-                // FIX: If this was a reset, immediately re-scan inventory so existing items are counted
-                if (!payload.complete()) processItemAcquisition(player, ItemStack.EMPTY);
 
+                player.setData(QuestAttachmentRegistry.PLAYER_PROGRESS, progress);
+                syncAndCheckCompletions(player);
+                // Re-scan inventory only if the whole quest was reset, to avoid immediate re-completion stutters
+                if (!payload.complete() && payload.taskId().isEmpty()) processItemAcquisition(player, ItemStack.EMPTY);
             }
         });
     }
@@ -263,13 +268,15 @@ public class QuestServerEvents {
                 // 2. Reset progress for all quests in those chapters
                 for (QuestChapter ch : targets) {
                     progress.resetChapter(ch.getName());
-                    for (Quest q : ch.getQuests()) {
-                        progress.resetQuest(q.getId());
-                        for (QuestTask task : q.getTasks()) {
+                    for (Quest questInChapter : ch.getQuests()) {
+                        String qId = questInChapter.getId();
+                        progress.resetQuest(qId);
+                        
+                        // Fix greedy prefix matching for bulk unclaiming
+                        progress.getClaimedRewards().removeIf(id -> id.equals(qId) || id.startsWith(qId + "/"));
+                        
+                        for (QuestTask task : questInChapter.getTasks()) {
                             progress.resetTaskProgress(task.getId());
-                        }
-                        for (QuestReward reward : q.getRewards()) {
-                            progress.unclaimReward(reward.getId());
                         }
                     }
                 }

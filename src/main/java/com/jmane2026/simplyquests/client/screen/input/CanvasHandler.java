@@ -96,15 +96,19 @@ public class CanvasHandler {
             if (mouseX >= ix && mouseX <= ix + 20 && mouseY >= b.y + 45 && mouseY <= b.y + 65) {
                 QuestReward r = screen.selectedQuest.getRewards().get(rStart + i);
                 boolean isBundle = !r.getSubRewards().isEmpty();
+                boolean claimed = SimplyQuestsClientPacketHandler.CLIENT_CLAIMED_REWARDS.contains(r.getId());
 
                 if (button == 0) {
                     boolean questDone = SimplyQuestsClientPacketHandler.CLIENT_COMPLETED_QUESTS.contains(screen.selectedQuest.getId());
-                    if (questDone) {
+                    // Only allow interaction if the quest is finished and the reward hasn't been claimed yet
+                    if (questDone && !claimed) {
                         if (isBundle) {
                             screen.activeChoiceBundle = r;
                             screen.selectedChoice = null;
                             screen.isChoiceModalOpen = true;
-                        } else if (!SimplyQuestsClientPacketHandler.CLIENT_CLAIMED_REWARDS.contains(r.getId())) {
+                            QuestScreen.playClickSound();
+                            return true;
+                        } else {
                             ClientPacketDistributor.sendToServer(new ClaimRewardPayload(r.getId()));
                         }
                     }

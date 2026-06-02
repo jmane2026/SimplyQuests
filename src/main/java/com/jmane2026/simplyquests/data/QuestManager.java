@@ -316,9 +316,19 @@ public class QuestManager extends SimpleJsonResourceReloadListener {
         // FIX: Rebuild sets/maps if they are unmodifiable (common with Codec-loaded data)
         // We check for removal needs and replace the entire collection if pruning is required.
 
-        if (progress.getCompletedQuests().removeIf(id -> !lookup.containsKey(id))) {
-            // No action needed if removeIf succeeded, but some environments 
-            // may require re-assignment if the set was replaced.
+        // 2. PRUNING: Only remove if the registry is fully loaded to prevent race-condition wipes
+        if (!allQuests.isEmpty()) {
+            progress.getCompletedQuests().removeIf(id -> !lookup.containsKey(id));
+            
+            // Use exact contains check for task IDs
+            progress.getTaskProgressMap().keySet().removeIf(id -> !validTaskIds.contains(id));
+            
+            progress.getClaimedRewards().removeIf(id -> {
+                int lastSlash = id.lastIndexOf('/');
+                if (lastSlash == -1) return !lookup.containsKey(id);
+                String questId = id.substring(0, lastSlash);
+                return !lookup.containsKey(questId);
+            });
         }
         
         try {

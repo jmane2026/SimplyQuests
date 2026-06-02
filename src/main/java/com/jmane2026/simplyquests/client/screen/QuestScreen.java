@@ -2973,7 +2973,11 @@ public class QuestScreen extends Screen {
 
                 // Hover Tooltip
                 if (isRewardHovered) {
-                    hoveredRewardLabel = isBundle ? "Reward Choice (Click to open)" : getRewardTooltip(reward);
+                    if (claimed) {
+                        hoveredRewardLabel = isBundle ? "Choice Reward (Claimed)" : getRewardTooltip(reward) + " (Claimed)";
+                    } else {
+                        hoveredRewardLabel = isBundle ? "Reward Choice (Click to open)" : getRewardTooltip(reward);
+                    }
                 }
             }
         }
