@@ -66,11 +66,11 @@ public class SimplyQuestsClientPacketHandler {
             if (Minecraft.getInstance().screen instanceof QuestScreen screen) {
                 // FIX: If an editor is open, do NOT call init(). Flag it for later.
                 // This prevents "orphaned references" and sync-drift while editing.
-                if (screen.isEditorOpen || screen.isTaskEditorOpen || screen.isRewardEditorOpen || screen.isTextEditorOpen) {
+                if (screen.isEditorOpen || screen.isTaskEditorOpen || screen.isRewardEditorOpen || screen.isTextEditorOpen || screen.isSidebarEditing()) {
                     NEEDS_REFRESH = true;
-                    return;
+                } else {
+                    screen.init(); // Instant refresh for anyone just viewing the canvas
                 }
-
                 // 2. Refresh the claimable badge cache
                 QuestScreen.updateClaimableCache();
             }

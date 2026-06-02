@@ -1763,8 +1763,6 @@ public class QuestEditorUI {
 
             int scale = Math.max(1, (int) ((iconSize * multiplier) / Math.max(0.1f, maxDim)));
 
-            SimplyQuests.LOGGER.info("[TASK RENDER] Type: {} | Grid: ({}, {}) | Size: {} | Scale: {}", type.getDescription().getString(), x, y, iconSize, scale);
-
             InventoryScreen.extractEntityInInventoryFollowsMouse(
                     graphics, x, y, x + iconSize, y + iconSize, scale, 0, 0, 0, living
             );

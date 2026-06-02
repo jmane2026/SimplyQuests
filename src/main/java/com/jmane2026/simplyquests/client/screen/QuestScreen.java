@@ -499,6 +499,9 @@ public class QuestScreen extends Screen {
 
     @Override
     public void extractRenderState(GuiGraphicsExtractor graphics, int mouseX, int mouseY, float partialTick) {
+        // Constant check for background data updates (Real-time Sync)
+        checkPendingRefresh();
+
         super.extractRenderState(graphics, mouseX, mouseY, partialTick);
 
         // Define screen center early so it's available for all manipulation and matrix math
