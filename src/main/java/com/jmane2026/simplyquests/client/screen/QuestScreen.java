@@ -1637,8 +1637,8 @@ public class QuestScreen extends Screen {
                     float endX = (quest == this.movingQuest ? ghostX : (float) quest.getX()) + (quest.getSize() / 2.0f);
                     float endY = (quest == this.movingQuest ? ghostY : (float) quest.getY()) + (quest.getSize() / 2.0f);
 
-                    int parentColor = getStateColor(dependency.getState());
-                    int childColor = getStateColor(quest.getState());
+                    int parentColor = !dependency.getLockedBy().isEmpty() ? COL_ERROR : getStateColor(dependency.getState());
+                    int childColor = !quest.getLockedBy().isEmpty() ? COL_ERROR : getStateColor(quest.getState());
 
                     float r1 = dependency.getSize() * 0.25f;
                     float r2 = quest.getSize() * 0.25f;
@@ -3162,11 +3162,19 @@ public class QuestScreen extends Screen {
         playClickSound();
     }
 
+    private void scrubQuestFromDependencies(String questId) {
+        for (Quest q : allQuests) {
+            q.getDependencies().remove(questId);
+        }
+    }
+
     public void deleteQuest(Quest quest) {
 
         SimplyQuestsClientPacketHandler.CLIENT_COMPLETED_QUESTS.remove(quest.getId());
 
         this.allQuests.remove(quest);
+
+        scrubQuestFromDependencies(quest.getId());
 
         this.questLookup.remove(quest.getId());
 
@@ -3320,6 +3328,10 @@ public class QuestScreen extends Screen {
                         for (SidebarChapter ch : group.getChapters()) {
                             String chId = ch.getId();
 
+                            for (Quest q : new ArrayList<>(allQuests)) {
+                                if (q.getChapterName().equals(chId)) scrubQuestFromDependencies(q.getId());
+                            }
+
                             ClientPacketDistributor.sendToServer(new DeleteChapterPayload(chId));
 
                             allQuests.removeIf(q -> {
@@ -3334,6 +3346,7 @@ public class QuestScreen extends Screen {
                         sidebarEntries.remove(group);
 
                         ClientPacketDistributor.sendToServer(new DeleteGroupPayload(group.getName()));
+                        saveAllChapters();
                         updateQuestStates();
                         saveGroupManifest();
                     }
@@ -3359,6 +3372,10 @@ public class QuestScreen extends Screen {
                     case 4 -> {
                         String chapterId = chapter.getId();
 
+                        for (Quest q : new ArrayList<>(allQuests)) {
+                            if (q.getChapterName().equals(chapterId)) scrubQuestFromDependencies(q.getId());
+                        }
+
                         ClientPacketDistributor.sendToServer(new DeleteChapterPayload(chapterId));
 
                         allQuests.removeIf(q -> {
@@ -3380,6 +3397,7 @@ public class QuestScreen extends Screen {
                             selectedChapter = null;
                         }
 
+                        saveAllChapters();
                         updateQuestStates();
                         saveGroupManifest();
                     }
@@ -3446,6 +3464,9 @@ public class QuestScreen extends Screen {
                 String uniqueId = newId + "_" + Long.toHexString(System.currentTimeMillis()).substring(8);
                 this.questToModify = new Quest(uniqueId, currentChapter, "New Quest", gridX, gridY);
                 this.originalQuest = null;
+
+                this.editorUI.searchQuery = "New Quest";
+                this.editorUI.cursorIndex = 9;
                 this.isEditorOpen = true;
             } else if (optionIndex == 1) {
                 CanvasText ct = new CanvasText("New Text", snappedX, snappedY, 1.0f, COL_TEXT);
@@ -3727,6 +3748,11 @@ public class QuestScreen extends Screen {
 
     public void saveChanges() {
         if (questToModify != null) {
+            if (editorUI.isTitleOpen) questToModify.setTitle(editorUI.searchQuery);
+            if (editorUI.isSubTitleOpen) questToModify.setSubTitle(editorUI.searchQuery);
+            if (editorUI.isDescriptionOpen) questToModify.setDescription(editorUI.searchQuery);
+            editorUI.closePicker();
+
             if (originalQuest != null) {
 
                 String oldId = originalQuest.getId();

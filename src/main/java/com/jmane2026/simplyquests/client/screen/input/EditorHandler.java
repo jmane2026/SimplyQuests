@@ -155,6 +155,26 @@ public class EditorHandler {
         QuestEditorUI ui = screen.editorUI;
         Quest quest = screen.questToModify;
 
+        if (ui.isClickingSave(mouseX, mouseY, px, py, winH)) {
+            screen.saveChanges();
+            QuestScreen.playClickSound();
+            return true;
+        }
+
+        if (ui.isClickingCancel(mouseX, mouseY, px, py, winH) || (!isClickInsideActiveArea(mouseX, mouseY, px, py, winW, winH, ui) && !ui.isSubTitleOpen && !ui.isDescriptionOpen)) {
+            if (ui.isTitleOpen || ui.isSubTitleOpen || ui.isDescriptionOpen || ui.isIconPickerOpen || ui.isShapePickerOpen || ui.isDependencyPickerOpen) {
+                ui.closePicker();
+            } else {
+                if (screen.originalQuest != null) {
+                    screen.originalQuest.setLockedBy("");
+                    ClientPacketDistributor.sendToServer(new com.jmane2026.simplyquests.network.QuestLockPayload(screen.originalQuest.getId(), false));
+                }
+                screen.isEditorOpen = false;
+                QuestScreen.playClickSound();
+            }
+            return true;
+        }
+
         if (ui.isSubTitleOpen || ui.isDescriptionOpen) {
             int bx = (screen.width - 240) / 2, by = (screen.height - 140) / 2;
             if (QuestEditorUI.isMouseOver(mouseX, mouseY, bx + 240 - 55, by + 120, 50, 14)) {
@@ -187,25 +207,6 @@ public class EditorHandler {
         int sizeRowY = ui.getRowY("Size", py);
         if (mouseX >= px + 100 && mouseX <= px + 240 && mouseY >= sizeRowY + 2 && mouseY <= sizeRowY + 14) {
             screen.isDraggingSizeSlider = true;
-            return true;
-        }
-
-        if (ui.isClickingSave(mouseX, mouseY, px, py, winH)) {
-            screen.saveChanges();
-            QuestScreen.playClickSound();
-            return true;
-        }
-        if (ui.isClickingCancel(mouseX, mouseY, px, py, winH) || !isClickInsideActiveArea(mouseX, mouseY, px, py, winW, winH, ui)) {
-            if (ui.isTitleOpen || ui.isSubTitleOpen || ui.isDescriptionOpen || ui.isIconPickerOpen || ui.isShapePickerOpen || ui.isDependencyPickerOpen) {
-                ui.closePicker();
-            } else {
-                if (screen.originalQuest != null) {
-                    screen.originalQuest.setLockedBy("");
-                    ClientPacketDistributor.sendToServer(new QuestLockPayload(screen.originalQuest.getId(), false));
-                }
-                screen.isEditorOpen = false;
-                QuestScreen.playClickSound();
-            }
             return true;
         }
 

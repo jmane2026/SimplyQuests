@@ -84,6 +84,8 @@ public class QuestEditorUI {
     public static final int PICKER_COLUMNS = 5;
 
     private String lastQuery = null;
+    private String lastDependencyQuery = null;
+    private int lastQuestCount = -1;
     private QuestTask.TaskType lastType = null;
     private List<Item> cachedIcons = new ArrayList<>();
     private List<String> cachedTargets = new ArrayList<>();
@@ -540,93 +542,6 @@ public class QuestEditorUI {
             QuestScreen.renderStaticOverlayFromUI(graphics, pendingTaskOverlay, overlayX, overlayY, maxTextWidth + 10);
     }
 
-    public List<String> getFilteredTargets(QuestTask.TaskType type) {
-        String q = searchQuery.toLowerCase();
-        List<String> results = new ArrayList<>();
-
-        if (type == QuestTask.TaskType.ITEM) {
-            if (q.startsWith("#")) {
-
-                String tagQuery = q.substring(1);
-                BuiltInRegistries.ITEM.getTags()
-                        .map(tag -> tag.key().location().toString())
-                        .filter(path -> path.contains(tagQuery))
-                        .map(path -> "#" + path)
-                        .forEach(results::add);
-            } else {
-
-                for (Item item : BuiltInRegistries.ITEM) {
-                    Identifier id = BuiltInRegistries.ITEM.getKey(item);
-                    if (id != null) {
-                        String idStr = id.toString().toLowerCase();
-                        String name = item.getName(item.getDefaultInstance()).getString().toLowerCase();
-                        if (idStr.contains(q) || name.contains(q)) {
-                            results.add(idStr);
-                        }
-                    }
-                }
-            }
-        } else if (type == QuestTask.TaskType.KILL) {
-            if (q.startsWith("#")) {
-                String tagQuery = q.substring(1);
-                BuiltInRegistries.ENTITY_TYPE.getTags()
-                        .filter(set -> set.stream().anyMatch(h -> h.value().getCategory() != MobCategory.MISC))
-                        .map(set -> set.key().location().toString())
-                        .filter(path -> path.contains(tagQuery))
-                        .map(path -> "#" + path)
-                        .forEach(results::add);
-            } else {
-                for (EntityType<?> et : BuiltInRegistries.ENTITY_TYPE) {
-                    if (et.getCategory() != MobCategory.MISC) {
-                        Identifier id = BuiltInRegistries.ENTITY_TYPE.getKey(et);
-                        if (id != null) {
-                            String idStr = id.toString().toLowerCase();
-                            String name = et.getDescription().getString().toLowerCase();
-                            if (idStr.contains(q) || name.contains(q)) {
-                                results.add(idStr);
-                            }
-                        }
-                    }
-                }
-            }
-        } else if (type == QuestTask.TaskType.OBSERVE) {
-            if (q.startsWith("#")) {
-                String tagQuery = q.substring(1);
-                BuiltInRegistries.ENTITY_TYPE.getTags()
-                        .filter(set -> set.stream().anyMatch(h -> h.value().getCategory() != MobCategory.MISC))
-                        .map(set -> set.key().location().toString()).filter(p -> p.contains(tagQuery))
-                        .map(p -> "#" + p).forEach(results::add);
-                BuiltInRegistries.BLOCK.getTags()
-                        .map(set -> set.key().location().toString()).filter(p -> p.contains(tagQuery))
-                        .map(p -> "#" + p).forEach(results::add);
-            } else {
-                for (EntityType<?> et : BuiltInRegistries.ENTITY_TYPE) {
-                    if (et.getCategory() != MobCategory.MISC) {
-                        Identifier id = BuiltInRegistries.ENTITY_TYPE.getKey(et);
-                        if (id != null && (id.toString().contains(q) || et.getDescription().getString().toLowerCase().contains(q)))
-                            results.add(id.toString());
-                    }
-                }
-                for (Identifier id : BuiltInRegistries.BLOCK.keySet()) {
-                    if (id.toString().contains(q)) results.add(id.toString());
-                }
-            }
-        } else if (type == QuestTask.TaskType.BIOME) {
-            var registry = Minecraft.getInstance().level.registryAccess().lookupOrThrow(Registries.BIOME);
-            for (Identifier id : registry.keySet()) {
-                String rawId = id.toString();
-                String friendlyName = toTitleCase(id.getPath());
-
-                if (rawId.toLowerCase().contains(q) || friendlyName.toLowerCase().contains(q)) {
-                    results.add(rawId);
-                }
-            }
-        }
-
-        Collections.sort(results);
-        return results;
-    }
-
     public void renderRewardEditor(GuiGraphicsExtractor graphics, int mouseX, int mouseY, int panelX, int panelY, int panelWidth, int panelHeight, QuestReward reward) {
         this.currentRewardType = reward.getType();
         int leftMargin = panelX + 15;
@@ -1074,14 +989,17 @@ public class QuestEditorUI {
     private List<Item> getFilteredIcons() {
         if (searchQuery.isEmpty()) return availableIcons;
         String query = searchQuery.toLowerCase();
+        boolean isNamespace = query.startsWith("@");
+        String cleanQuery = isNamespace ? query.substring(1) : query;
 
         return availableIcons.stream()
                 .filter(item -> {
+                    Identifier id = BuiltInRegistries.ITEM.getKey(item);
+                    if (isNamespace) {
+                        return id.getNamespace().contains(cleanQuery);
+                    }
                     String displayName = item.getName(item.getDefaultInstance()).getString().toLowerCase();
-
-                    String registryName = BuiltInRegistries.ITEM.getKey(item).toString().toLowerCase();
-
-                    return displayName.contains(query) || registryName.contains(query);
+                    return displayName.contains(cleanQuery) || id.toString().toLowerCase().contains(cleanQuery);
                 })
                 .toList();
     }
@@ -1094,12 +1012,162 @@ public class QuestEditorUI {
         return cachedTargets;
     }
 
-    public List<Quest> getCachedDependencies(List<Quest> allQuests, Quest questToModify) {
+    public List<String> getFilteredTargets(QuestTask.TaskType type) {
+        String q = searchQuery.toLowerCase();
+        boolean isNamespace = q.startsWith("@");
+        String cleanQuery = isNamespace ? q.substring(1) : q;
+        List<String> results = new ArrayList<>();
 
-        if (searchQuery.equals(lastQuery) && !cachedDependencies.isEmpty()) return cachedDependencies;
+        if (type == QuestTask.TaskType.ITEM) {
+            if (q.startsWith("#")) {
+
+                String tagQuery = q.substring(1);
+                BuiltInRegistries.ITEM.getTags()
+                        .map(tag -> tag.key().location().toString())
+                        .filter(path -> path.contains(tagQuery))
+                        .map(path -> "#" + path)
+                        .forEach(results::add);
+            } else {
+
+                for (Item item : BuiltInRegistries.ITEM) {
+                    Identifier id = BuiltInRegistries.ITEM.getKey(item);
+                    if (id != null) {
+                        if (isNamespace) {
+                            if (id.getNamespace().contains(cleanQuery)) results.add(id.toString());
+                            continue;
+                        }
+                        String idStr = id.toString().toLowerCase();
+                        String name = item.getName(item.getDefaultInstance()).getString().toLowerCase();
+                        if (idStr.contains(cleanQuery) || name.contains(cleanQuery)) {
+                            results.add(idStr);
+                        }
+                    }
+                }
+            }
+        } else if (type == QuestTask.TaskType.KILL) {
+            if (q.startsWith("#")) {
+                String tagQuery = q.substring(1);
+                BuiltInRegistries.ENTITY_TYPE.getTags()
+                        .filter(set -> set.stream().anyMatch(h -> h.value().getCategory() != MobCategory.MISC))
+                        .map(set -> set.key().location().toString())
+                        .filter(path -> path.contains(tagQuery))
+                        .map(path -> "#" + path)
+                        .forEach(results::add);
+            } else {
+                for (EntityType<?> et : BuiltInRegistries.ENTITY_TYPE) {
+                    if (et.getCategory() != MobCategory.MISC) {
+                        Identifier id = BuiltInRegistries.ENTITY_TYPE.getKey(et);
+                        if (id != null) {
+                            if (isNamespace) {
+                                if (id.getNamespace().contains(cleanQuery)) results.add(id.toString());
+                                continue;
+                            }
+                            String idStr = id.toString().toLowerCase();
+                            String name = et.getDescription().getString().toLowerCase();
+                            if (idStr.contains(cleanQuery) || name.contains(cleanQuery)) {
+                                results.add(idStr);
+                            }
+                        }
+                    }
+                }
+            }
+        } else if (type == QuestTask.TaskType.OBSERVE) {
+            if (q.startsWith("#")) {
+                String tagQuery = q.substring(1);
+                BuiltInRegistries.ENTITY_TYPE.getTags()
+                        .filter(set -> set.stream().anyMatch(h -> h.value().getCategory() != MobCategory.MISC))
+                        .map(set -> set.key().location().toString()).filter(p -> p.contains(tagQuery))
+                        .map(p -> "#" + p).forEach(results::add);
+                BuiltInRegistries.BLOCK.getTags()
+                        .map(set -> set.key().location().toString()).filter(p -> p.contains(tagQuery))
+                        .map(p -> "#" + p).forEach(results::add);
+            } else {
+                for (EntityType<?> et : BuiltInRegistries.ENTITY_TYPE) {
+                    if (et.getCategory() != MobCategory.MISC) {
+                        Identifier id = BuiltInRegistries.ENTITY_TYPE.getKey(et);
+                        if (id != null) {
+                            if (isNamespace && id.getNamespace().contains(cleanQuery)) {
+                                results.add(id.toString());
+                            } else if (!isNamespace && (id.toString().contains(cleanQuery) || et.getDescription().getString().toLowerCase().contains(cleanQuery))) {
+                                results.add(id.toString());
+                            }
+                        }
+                    }
+                }
+                for (Identifier id : BuiltInRegistries.BLOCK.keySet()) {
+                    if (isNamespace) {
+                        if (id.getNamespace().contains(cleanQuery)) results.add(id.toString());
+                    } else if (id.toString().contains(cleanQuery)) {
+                        results.add(id.toString());
+                    }
+                }
+            }
+        } else if (type == QuestTask.TaskType.BIOME) {
+            var registry = Minecraft.getInstance().level.registryAccess().lookupOrThrow(Registries.BIOME);
+            for (Identifier id : registry.keySet()) {
+                if (isNamespace) {
+                    if (id.getNamespace().contains(cleanQuery)) results.add(id.toString());
+                    continue;
+                }
+                String rawId = id.toString();
+                String friendlyName = toTitleCase(id.getPath());
+
+                if (rawId.toLowerCase().contains(cleanQuery) || friendlyName.toLowerCase().contains(cleanQuery)) {
+                    results.add(rawId);
+                }
+            }
+        }
+
+        Collections.sort(results);
+        return results;
+    }
+
+    public List<Quest> getCachedDependencies(List<Quest> allQuests, Quest questToModify) {
+        if (searchQuery.equals(lastDependencyQuery) && allQuests.size() == lastQuestCount && !cachedDependencies.isEmpty()) {
+            return cachedDependencies;
+        }
+
         this.cachedDependencies = getFilteredDependencies(allQuests, questToModify);
-        this.lastQuery = searchQuery;
+        this.lastDependencyQuery = searchQuery;
+        this.lastQuestCount = allQuests.size();
         return cachedDependencies;
+    }
+
+    public List<Quest> getFilteredDependencies(List<Quest> allQuests, Quest questToModify) {
+        String q = searchQuery.toLowerCase();
+        boolean isChapterFilter = q.startsWith("@");
+        String cleanQuery = isChapterFilter ? q.substring(1) : q;
+
+        java.util.function.Predicate<Quest> matchesQuery = quest -> {
+            if (isChapterFilter) {
+                return quest.getChapterName().toLowerCase().contains(cleanQuery);
+            }
+            String title = quest.getTitle().toLowerCase();
+            String id = quest.getId().toString().toLowerCase();
+            return title.contains(cleanQuery) || id.contains(cleanQuery);
+        };
+
+        if (isRemoveDependencyMode) {
+            List<Quest> list = new ArrayList<>(allQuests.stream()
+                    .filter(quest -> questToModify.getDependencies().contains(quest.getId()))
+                    .filter(matchesQuery)
+                    .toList());
+
+            for (String depId : questToModify.getDependencies()) {
+                if (allQuests.stream().noneMatch(quest -> quest.getId().equals(depId))) {
+                    Quest dummy = new Quest(depId, "Unknown", "§cMissing: " + depId, 0, 0);
+                    if (matchesQuery.test(dummy)) list.add(dummy);
+                }
+            }
+
+            return list;
+        } else {
+            return allQuests.stream()
+                    .filter(quest -> !quest.getId().equals(questToModify.getId()))
+                    .filter(quest -> !questToModify.getDependencies().contains(quest.getId()))
+                    .filter(matchesQuery)
+                    .toList();
+        }
     }
 
     private void drawCustomTooltip(GuiGraphicsExtractor graphics, String text, int mouseX, int mouseY) {
@@ -1137,29 +1205,6 @@ public class QuestEditorUI {
 
         for (int i = 0; i < lines.size(); i++) {
             graphics.text(this.font, lines.get(i), boxX + padding, boxY + 3 + (i * this.font.lineHeight), QuestScreen.COL_TEXT);
-        }
-    }
-
-    public List<Quest> getFilteredDependencies(List<Quest> allQuests, Quest questToModify) {
-        String q = searchQuery.toLowerCase();
-
-        java.util.function.Predicate<Quest> matchesQuery = quest -> {
-            String title = quest.getTitle().toLowerCase();
-            String id = quest.getId().toString().toLowerCase();
-            return title.contains(q) || id.contains(q);
-        };
-
-        if (isRemoveDependencyMode) {
-            return allQuests.stream()
-                    .filter(quest -> questToModify.getDependencies().contains(quest.getId()))
-                    .filter(matchesQuery)
-                    .toList();
-        } else {
-            return allQuests.stream()
-                    .filter(quest -> !quest.getId().equals(questToModify.getId()))
-                    .filter(quest -> !questToModify.getDependencies().contains(quest.getId()))
-                    .filter(matchesQuery)
-                    .toList();
         }
     }
 
@@ -1246,6 +1291,11 @@ public class QuestEditorUI {
         this.textScrollOffset = 0;
         this.selectionStart = -1;
         this.selectionEnd = -1;
+
+        // Force refresh for the next time the picker is opened
+        this.lastDependencyQuery = null;
+        this.lastQuestCount = -1;
+
         QuestScreen.playClickSound();
     }
 

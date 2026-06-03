@@ -169,7 +169,8 @@ public class PickerHandler {
             if (showCheck && idx == 0) {
                 if (screen.isEditingChapterIcon) {
                     screen.sidebarTargetChapter.setIconStack(new ItemStack(Items.PAPER));
-                    screen.saveChapterData(screen.sidebarTargetChapter.getName());
+                    screen.saveChapterData(screen.sidebarTargetChapter.getId());
+                    screen.saveGroupManifest();
                 } else if (screen.questToModify != null) {
                     screen.questToModify.setUseTaskIcon(true);
                     screen.questToModify.setLogo(Items.PAPER);
@@ -182,7 +183,8 @@ public class PickerHandler {
                     Item s = icons.get(itemIdx);
                     if (screen.isEditingChapterIcon) {
                         screen.sidebarTargetChapter.setIconStack(new ItemStack(s));
-                        screen.saveChapterData(screen.sidebarTargetChapter.getName());
+                        screen.saveChapterData(screen.sidebarTargetChapter.getId());
+                        screen.saveGroupManifest();
                     } else if (screen.rewardToModify != null) {
                         QuestReward activeTarget = (ui.selectedRewardChoiceIndex == -1)
                                 ? screen.rewardToModify
