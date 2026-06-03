@@ -23,6 +23,23 @@ import java.util.stream.Collectors;
 
 public class ServerPayloadHandler {
 
+    public static void handleQuestLock(final QuestLockPayload payload, final IPayloadContext context) {
+        if (!isOp(context)) return;
+        context.enqueueWork(() -> {
+            var manager = QuestServerEvents.getQuestManager();
+            Quest target = manager.questLookup.get(payload.questId());
+            if (target != null) {
+                String currentPlayer = context.player().getName().getString();
+                if (payload.lock()) {
+                    if (target.getLockedBy().isEmpty()) target.setLockedBy(currentPlayer);
+                } else {
+                    if (target.getLockedBy().equals(currentPlayer)) target.setLockedBy("");
+                }
+                broadcastFullSync();
+            }
+        });
+    }
+
     private static boolean isOp(IPayloadContext context) {
         if (context.player() instanceof ServerPlayer player) {
             NameAndId identity = new NameAndId(player.getGameProfile().id(), player.getGameProfile().name());
@@ -36,29 +53,41 @@ public class ServerPayloadHandler {
 
         context.enqueueWork(() -> {
             String chName = payload.chapter().getName();
-
+            String playerName = context.player().getName().getString();
             Identifier chId = Identifier.fromNamespaceAndPath("simplyquests", chName.toLowerCase().replaceAll("[^a-z0-9/._-]", "_"));
 
-            // SMART MERGE: Instead of replacing the chapter, merge the incoming objects.
-            // This allows Player A and B to create quests simultaneously without deleting each other's work.
             QuestChapter oldChapter = QuestServerEvents.getQuestManager().getChapters().get(chId);
             QuestChapter chapterToSave = payload.chapter();
 
             if (oldChapter != null) {
-                // 1. Merge Quests (Update existing by ID, add new ones)
+                // 1. Merge Quests (Owner-Aware)
                 Map<String, Quest> questMap = new LinkedHashMap<>();
-                oldChapter.getQuests().forEach(q -> questMap.put(q.getId(), q));
-                // Payload (Client) always overwrites the Server's version of the same ID
-                payload.chapter().getQuests().forEach(q -> questMap.put(q.getId(), q));
 
-                // 2. Merge Canvas Texts (Match by approximate identity)
+                // Populate from server state, but respect deletions from the lock owner
+                for (Quest q : oldChapter.getQuests()) {
+                    if (q.getLockedBy().equals(playerName)) {
+                        boolean inPayload = payload.chapter().getQuests().stream().anyMatch(i -> i.getId().equals(q.getId()));
+                        if (!inPayload) continue; // Owner removed it; don't resurrect it
+                    }
+                    questMap.put(q.getId(), q);
+                }
+
+                // Apply incoming payload (overwrites/adds)
+                payload.chapter().getQuests().forEach(q -> {
+                    q.setLockedBy(""); // Ensure newly saved quests are implicitely unlocked
+                    questMap.put(q.getId(), q);
+                });
+
+                // Final check: unlock any other quests held by this player in this chapter
+                questMap.values().stream().filter(q -> q.getLockedBy().equals(playerName)).forEach(q -> q.setLockedBy(""));
+
+                // 2. Merge Canvas Texts
                 Map<String, CanvasText> textMap = new LinkedHashMap<>();
-                oldChapter.getCanvasTexts().forEach(t -> textMap.put(t.getText() + t.getX() + t.getY(), t));
+                oldChapter.getCanvasTexts().forEach(t -> textMap.put(t.getText() + (int)t.getX() + (int)t.getY(), t));
                 payload.chapter().getCanvasTexts().forEach(t -> textMap.put(t.getText() + t.getX() + t.getY(), t));
 
                 // 3. Merge Canvas Images
                 Map<String, QuestCanvasImage> imgMap = new LinkedHashMap<>();
-                // FIX: Use unique instance ID instead of filename (imageId) to allow duplicates of the same file
                 oldChapter.getCanvasImages().forEach(i -> imgMap.put(i.getId(), i));
                 payload.chapter().getCanvasImages().forEach(i -> imgMap.put(i.getId(), i));
 

@@ -58,6 +58,14 @@ public class CanvasHandler {
             int tasksCenter = b.x + (b.width / 4);
             int plusX = tasksCenter + (Minecraft.getInstance().font.width("Tasks") / 2) + 8;
             if (mouseX >= plusX - 2 && mouseX <= plusX + 10) {
+
+                // FIX: Request a fresh lock when adding a task to ensure consecutive edits are protected
+                screen.originalQuest = screen.selectedQuest;
+                if (screen.originalQuest != null) {
+                    screen.originalQuest.setLockedBy(Minecraft.getInstance().player.getName().getString());
+                    ClientPacketDistributor.sendToServer(new QuestLockPayload(screen.originalQuest.getId(), true));
+                }
+
                 screen.taskToModify = new QuestTask(QuestTask.generateTaskId(screen.selectedQuest.getId(), "task", screen.selectedQuest.getTasks()), QuestTask.TaskType.ITEM, "", "New Task", 1, 0, false, false, false, QuestTask.TaskState.INCOMPLETE, 0, 0, 0, false);
                 screen.isTaskEditorOpen = true;
                 screen.editorUI.isTaskMode = true;
@@ -66,6 +74,14 @@ public class CanvasHandler {
             }
             int rPlusX = (b.x + (3 * b.width / 4)) + (Minecraft.getInstance().font.width("Rewards") / 2) + 8;
             if (mouseX >= rPlusX - 2 && mouseX <= rPlusX + 10) {
+
+                // FIX: Request a fresh lock when adding a reward
+                screen.originalQuest = screen.selectedQuest;
+                if (screen.originalQuest != null) {
+                    screen.originalQuest.setLockedBy(Minecraft.getInstance().player.getName().getString());
+                    ClientPacketDistributor.sendToServer(new QuestLockPayload(screen.originalQuest.getId(), true));
+                }
+
                 screen.rewardToModify = new QuestReward(QuestReward.generateRewardId(screen.selectedQuest.getId(), "item", screen.selectedQuest.getRewards()), QuestReward.RewardType.ITEM, net.minecraft.world.item.Items.AIR, 1, "", new java.util.ArrayList<>());
                 screen.isRewardEditorOpen = true; screen.editorUI.isRewardModeOpen = true; QuestScreen.playClickSound(); return true;
             }
@@ -136,7 +152,12 @@ public class CanvasHandler {
             }
             screen.selectedCanvasImage = null; // Deselect if clicking empty space
 
-            for (Quest q : screen.allQuests) if (q.getChapterName().equals(activeChapterId) && screen.isMouseOverNode(mouseX, mouseY, q)) { screen.selectedQuest = q; QuestScreen.playClickSound(); return true; }
+            for (Quest q : screen.allQuests) {
+                if (q.getChapterName().equals(activeChapterId) && screen.isMouseOverNode(mouseX, mouseY, q)) {
+                    if (!q.getLockedBy().isEmpty() && !q.getLockedBy().equals(Minecraft.getInstance().player.getName().getString())) return true;
+                    screen.selectedQuest = q; QuestScreen.playClickSound(); return true;
+                }
+            }
         } else if (button == GLFW.GLFW_MOUSE_BUTTON_MIDDLE && QuestGlobalState.isEditModeEnabled) {
             // Pick up Canvas Images
             for (int i = screen.allCanvasImages.size() - 1; i >= 0; i--) {
@@ -156,6 +177,7 @@ public class CanvasHandler {
             // Pick up Quest Nodes
             for (Quest q : screen.allQuests) {
                 if (q.getChapterName().equals(activeChapterId) && screen.isMouseOverNode(mouseX, mouseY, q)) {
+                    if (!q.getLockedBy().isEmpty() && !q.getLockedBy().equals(Minecraft.getInstance().player.getName().getString())) return true;
                     screen.movingQuest = q;
                     QuestScreen.playClickSound();
                     return true;
@@ -186,7 +208,13 @@ public class CanvasHandler {
                     return true;
                 }
             }
-            for (Quest q : screen.allQuests) if (q.getChapterName().equals(activeChapterId) && screen.isMouseOverNode(mouseX, mouseY, q)) { screen.openQuestContextMenu(mouseX, mouseY, q); return true; }
+            for (Quest q : screen.allQuests) {
+                if (q.getChapterName().equals(activeChapterId) && screen.isMouseOverNode(mouseX, mouseY, q)) {
+                    // FIX: Block Context Menu if locked by someone else
+                    if (!q.getLockedBy().isEmpty() && !q.getLockedBy().equals(Minecraft.getInstance().player.getName().getString())) return true;
+                    screen.openQuestContextMenu(mouseX, mouseY, q); return true;
+                }
+            }
             for (CanvasText ct : screen.allCanvasTexts) if (ct.getChapterName().equals(activeChapterId) && screen.isMouseOverText(mouseX, mouseY, ct)) { screen.openTextContextMenu(mouseX, mouseY, ct); return true; }
             screen.openCanvasContextMenu(mouseX, mouseY);
             return true;

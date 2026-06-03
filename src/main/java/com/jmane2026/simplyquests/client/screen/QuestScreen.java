@@ -229,9 +229,11 @@ public class QuestScreen extends Screen {
     public final Map<String, Quest> questLookup = new HashMap<>();
 
     public void registerQuest(Quest quest) {
-        // FIX: Prevent duplicate rendering by checking if the quest is already registered.
-        // This solves the "multiple badges" issue caused by redundant server syncs.
-        if (this.questLookup.containsKey(quest.getId())) return;
+        // FIX: Prevent duplicates. If we already have this quest ID, remove the old instance
+        // before adding the fresh one from the server or editor.
+        if (questLookup.containsKey(quest.getId())) {
+            allQuests.remove(questLookup.get(quest.getId()));
+        }
 
         this.allQuests.add(quest);
         this.questLookup.put(quest.getId(), quest);
@@ -401,6 +403,7 @@ public class QuestScreen extends Screen {
 
                 // 3. Register all Quests in this chapter
                 for (Quest q : chapter.getQuests()) {
+                    allQuests.add(q);
                     registerQuest(q);
                 }
                 // 4. Load Canvas Texts
@@ -518,6 +521,13 @@ public class QuestScreen extends Screen {
         boolean isLeftButtonDown = GLFW.glfwGetMouseButton(windowHandle, GLFW.GLFW_MOUSE_BUTTON_1) == GLFW.GLFW_PRESS;
 
         if (!isLeftButtonDown) {
+            // FIX: Perform a single save when the manipulation is finished.
+            // This prevents the background sync from orphaning the selected image reference.
+            if (this.isDraggingAlphaSlider || this.isDraggingScaleHandle || this.isDraggingRotateHandle) {
+                if (selectedCanvasImage != null) {
+                    saveChapterData(selectedCanvasImage.getChapterName());
+                }
+            }
             this.isDraggingAlphaSlider = false;
             this.isDraggingScaleHandle = false;
             this.isDraggingRotateHandle = false;
@@ -694,11 +704,6 @@ public class QuestScreen extends Screen {
 
                 float newAlpha = (float)((hitX + 110) / 100.0);
                 selectedCanvasImage.setAlpha(Math.max(0.05f, Math.min(1.0f, newAlpha)));
-            }
-            
-            // Save changes to server frequently while dragging (throttled by the payload handler)
-            if (Util.getMillis() % 200 < 20) {
-                saveChapterData(selectedCanvasImage.getChapterName());
             }
         }
 
@@ -1355,37 +1360,43 @@ public class QuestScreen extends Screen {
         if (this.selectedChapter != null && mouseX > this.currentSidebarWidth) {
             Quest hoveredQuest = null;
             for (Quest quest : this.allQuests) {
-                // FIX: Check isInputBlocked to prevent tooltips rendering behind editors
-                if (!isInputBlocked() && quest.getChapterName().equals(this.selectedChapter.getId()) && isMouseOverNode(mouseX, mouseY, quest)) {
+                // FIX: Allow hoveredQuest to be found even if input is blocked, so lock tooltips still show
+                if (quest.getChapterName().equals(this.selectedChapter.getId()) && isMouseOverNode(mouseX, mouseY, quest)) {
                     hoveredQuest = quest;
                     break;
                 }
             }
             // FIX: Hide tooltips if input is blocked by a window or picker
             if (hoveredQuest != null && !isInputBlocked() && this.selectedQuest == null && !editorUI.isPickerOpen()) {
-                // Build detailed path: Group > Chapter > Quest
-                String tooltipText = hoveredQuest.getTitle();
+                String tooltipText = "";
 
-                // FIX: Pull from the Client Cache
-                Map<Identifier, QuestChapter> chapterMap = SimplyQuestsClientPacketHandler.getChapters();
-                
-                // Look up the actual Chapter data using the sanitized ID
-                Identifier chId = Identifier.fromNamespaceAndPath("simplyquests", Quest.sanitizePath(hoveredQuest.getChapterName()));
+                // FIX: Priority Chain. Lock message must come first.
+                if (!hoveredQuest.getLockedBy().isEmpty()) {
+                    tooltipText = "§cLocked for editing by: " + hoveredQuest.getLockedBy();
+                } else if (isInputBlocked()) {
+                    return; // Don't show path tooltips behind editors
+                } else {
+                    tooltipText = hoveredQuest.getTitle();
+                    Map<Identifier, QuestChapter> chapterMap = SimplyQuestsClientPacketHandler.getChapters();
 
-                QuestChapter chapter = chapterMap.get(chId);
+                    // Look up the actual Chapter data using the sanitized ID
+                    Identifier chId = Identifier.fromNamespaceAndPath("simplyquests", Quest.sanitizePath(hoveredQuest.getChapterName()));
 
-                if (chapter != null) {
-                    String chTitle = (chapter.getTitle() != null && !chapter.getTitle().isEmpty()) ? chapter.getTitle() : chapter.getName();
-                    String grpTitle = "";
+                    QuestChapter chapter = chapterMap.get(chId);
 
-                    if (chapter.getGroupName() != null && !chapter.getGroupName().isEmpty()) {
-                        String gId = Quest.sanitizePath(chapter.getGroupName());
-                        grpTitle = SimplyQuestsClientPacketHandler.getGroups().stream()
-                                .filter(g -> g.getName().equals(gId))
-                                .map(QuestGroup::getTitle)
-                                .findFirst().orElse("");
+                    if (chapter != null) {
+                        String chTitle = (chapter.getTitle() != null && !chapter.getTitle().isEmpty()) ? chapter.getTitle() : chapter.getName();
+                        String grpTitle = "";
+
+                        if (chapter.getGroupName() != null && !chapter.getGroupName().isEmpty()) {
+                            String gId = Quest.sanitizePath(chapter.getGroupName());
+                            grpTitle = SimplyQuestsClientPacketHandler.getGroups().stream()
+                                    .filter(g -> g.getName().equals(gId))
+                                    .map(QuestGroup::getTitle)
+                                    .findFirst().orElse("");
+                        }
+                        tooltipText = grpTitle.isEmpty() ? chTitle + " > " + hoveredQuest.getTitle() : grpTitle + " > " + chTitle + " > " + hoveredQuest.getTitle();
                     }
-                    tooltipText = grpTitle.isEmpty() ? chTitle + " > " + hoveredQuest.getTitle() : grpTitle + " > " + chTitle + " > " + hoveredQuest.getTitle();
                 }
                 renderAnchoredQuestTooltip(graphics, tooltipText);
             }
@@ -1956,7 +1967,7 @@ public class QuestScreen extends Screen {
     }
 
     public void openImagePicker(double snappedX, double snappedY) {
-        new Thread(() -> {
+        Thread pickerThread = new Thread(() -> {
             String path = null;
             
             // Use MemoryStack to handle the low-level pointers for file filters
@@ -1995,7 +2006,12 @@ public class QuestScreen extends Screen {
                 });
                 } catch (Exception e) { e.printStackTrace(); }
             }
-        }).start();
+        });
+        
+        // FIX: Setting the thread as a Daemon ensures that it won't block 
+        // the Minecraft process from exiting if the user closes the game.
+        pickerThread.setDaemon(true);
+        pickerThread.start();
     }
 
     private Identifier getOrRequestImage(String imageId) {
@@ -2056,9 +2072,12 @@ public class QuestScreen extends Screen {
 
     // Quick helper method to keep code clean
     private void drawQuestNode(GuiGraphicsExtractor graphics, int x, int y, int size, boolean isSelected, boolean isHovered, int stateColor, Quest quest) {
+        boolean isLocked = !quest.getLockedBy().isEmpty();
         // Lighten the background if hovered
-        int backgroundColor = (isHovered && !isInputBlocked() && !isContextMenuOpen) ? COL_PANEL_HEADER : COL_UI_BG;
-        int borderColor = isSelected ? COL_TEXT_SELECTED : stateColor;
+        int backgroundColor = (isHovered && !isInputBlocked() && !isContextMenuOpen && !isLocked) ? COL_PANEL_HEADER : COL_UI_BG;
+
+        // FIX: Force ERROR color if the node is locked by an admin
+        int borderColor = isLocked ? COL_ERROR : (isSelected ? COL_TEXT_SELECTED : stateColor);
 
         QuestShapeRenderer.render(quest.getShape(), graphics, x, y, size, borderColor, backgroundColor);
     }
@@ -2275,6 +2294,15 @@ public class QuestScreen extends Screen {
             QuestClientData.saveChapterViewState(this.selectedChapter.getId(), this.offsetX, this.offsetY, this.zoom);
             QuestClientData.setLastChapter(this.selectedChapter.getId());
         }
+
+        // CLEANUP: Clear static caches to help the JVM release native memory 
+        // (DynamicTextures use off-heap memory via NativeImage)
+        if (!DYNAMIC_IMAGES.isEmpty()) {
+            // We don't necessarily want to unregister them all (in case the screen 
+            // is just being toggled), but clearing the request set is safe.
+            PENDING_REQUESTS.clear();
+        }
+
         super.onClose();
     }
 
@@ -2324,19 +2352,6 @@ public class QuestScreen extends Screen {
 
         // --- PRIORITY ESCAPE HANDLING ---
         if (key == GLFW.GLFW_KEY_ESCAPE) {
-            if (this.isRewardSummaryOpen) {
-                this.isRewardSummaryOpen = false;
-                this.rewardsToShow.clear();
-                playClickSound();
-                return true;
-            }
-
-            if (this.isChoiceModalOpen) {
-                this.isChoiceModalOpen = false;
-                playClickSound();
-                return true;
-            }
-
             // 1. Color Picker has absolute top priority
             if (editorUI.isColorPickerOpen) {
                 editorUI.isColorPickerOpen = false;
@@ -2360,6 +2375,12 @@ public class QuestScreen extends Screen {
 
             // 4. Modal Windows
             if (this.isTaskEditorOpen || this.isRewardEditorOpen || this.isEditorOpen || this.isTextEditorOpen) {
+                // FIX: Release lock on Escape
+                if (this.originalQuest != null) {
+                    this.originalQuest.setLockedBy(""); // Local loopback
+                    ClientPacketDistributor.sendToServer(new QuestLockPayload(this.originalQuest.getId(), false));
+                }
+
                 this.isTaskEditorOpen = false;
                 this.isRewardEditorOpen = false;
                 this.isEditorOpen = false;
@@ -2427,19 +2448,13 @@ public class QuestScreen extends Screen {
             }
             if (this.isEditorOpen) {
                 // If a text sub-editor is open, commit that specific field first
-                if (editorUI.isTitleOpen) {
-                    questToModify.setTitle(editorUI.searchQuery);
-                    editorUI.closePicker();
-                    return true;
-                } else if (editorUI.isSubTitleOpen) {
-                    questToModify.setSubTitle(editorUI.searchQuery);
-                    editorUI.closePicker();
-                    return true;
-                } else if (editorUI.isDescriptionOpen) {
-                    questToModify.setDescription(editorUI.searchQuery);
-                    editorUI.closePicker();
-                    return true;
-                }
+                // FIX: Commit text AND proceed to saveChanges() to handle unlocking
+                if (editorUI.isTitleOpen) questToModify.setTitle(editorUI.searchQuery);
+                else if (editorUI.isSubTitleOpen) questToModify.setSubTitle(editorUI.searchQuery);
+                else if (editorUI.isDescriptionOpen) questToModify.setDescription(editorUI.searchQuery);
+
+                editorUI.closePicker();
+
                 // General editor save
                 saveChanges();
                 playClickSound();
@@ -2462,6 +2477,11 @@ public class QuestScreen extends Screen {
                     updateTaskNameAndId(editorUI.searchQuery);
                     editorUI.closePicker();
                 } else {
+                    // Release lock on Save via Enter key
+                    if (this.originalQuest != null) {
+                        this.originalQuest.setLockedBy(""); // Local loopback
+                        ClientPacketDistributor.sendToServer(new QuestLockPayload(this.originalQuest.getId(), false));
+                    }
                     // Act like the Save button for the Task Editor
                     if (this.originalTask == null) {
                         this.selectedQuest.getTasks().add(this.taskToModify);
@@ -2501,6 +2521,12 @@ public class QuestScreen extends Screen {
                 return true;
             } else if (this.isRewardEditorOpen) {
                 if (editorUI.isQuantityOpen || editorUI.isNameOpen) {
+                    // Release lock on Save via Enter key
+                    if (this.originalQuest != null) {
+                        this.originalQuest.setLockedBy(""); // Local loopback
+                        ClientPacketDistributor.sendToServer(new QuestLockPayload(this.originalQuest.getId(), false));
+                    }
+
                     // FIX: Resolve the active target (Parent or Choice) based on the selection index
                     QuestReward activeTarget = (editorUI.selectedRewardChoiceIndex == -1)
                             ? rewardToModify
@@ -2516,6 +2542,11 @@ public class QuestScreen extends Screen {
                     }
                     editorUI.closePicker();
                 } else {
+                    // Release lock when saving Reward via Enter
+                    if (this.originalQuest != null) {
+                        this.originalQuest.setLockedBy(""); // Local loopback
+                        ClientPacketDistributor.sendToServer(new QuestLockPayload(this.originalQuest.getId(), false));
+                    }
                     // FIX: Discard unconfigured "Ghost" choices before saving via Enter key (Empty Items or Empty Commands)
                     this.rewardToModify.getSubRewards().removeIf(r -> (r.getType() == QuestReward.RewardType.ITEM && r.getItem() == Items.AIR) ||
                             (r.getType() == QuestReward.RewardType.COMMAND && r.getCommand().trim().isEmpty()));
@@ -3650,6 +3681,12 @@ public class QuestScreen extends Screen {
             // Handling interactions with an existing quest node
             switch (optionIndex) {
                 case 0 -> {
+                    // FIX: originalQuest must be the LIVE quest from the registry
+                    this.originalQuest = this.questLookup.get(this.questToModify.getId());
+                    if (this.originalQuest != null) {
+                        this.originalQuest.setLockedBy(Minecraft.getInstance().player.getName().getString());
+                        ClientPacketDistributor.sendToServer(new QuestLockPayload(this.originalQuest.getId(), true));
+                    }
                     startEditing(questToModify);
                     this.popupX = this.width / 2.0 - 150;
                     this.popupY = this.height / 2.0 - 100;
@@ -3929,6 +3966,10 @@ public class QuestScreen extends Screen {
                 String oldId = originalQuest.getId();
                 String chapter = originalQuest.getChapterName();
                 String group = findGroupNameForChapter(chapter);
+
+                // FIX: Release Server Lock IMMEDIATELY using the oldId
+                originalQuest.setLockedBy(""); // Local loopback
+                ClientPacketDistributor.sendToServer(new QuestLockPayload(oldId, false));
 
                 // 2. Only regenerate the ID if the sanitized title has actually changed.
                 // This prevents "Sanitization Drift" from changing the ID and orphaning player progress

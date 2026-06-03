@@ -13,6 +13,12 @@ public class SimplyQuestsNetworking {
 
         boolean isClient = FMLEnvironment.getDist() == Dist.CLIENT;
 
+        registrar.playToServer(
+                QuestLockPayload.TYPE,
+                QuestLockPayload.CODEC,
+                ServerPayloadHandler::handleQuestLock
+        );
+
         // Register all Editor/Admin packets as playToServer (C2S)
         registrar.playToServer(
                 SaveChapterPayload.TYPE,

@@ -5,6 +5,9 @@ import com.jmane2026.simplyquests.data.QuestChapter;
 import com.jmane2026.simplyquests.data.QuestGroup;
 import com.jmane2026.simplyquests.events.QuestServerEvents;
 import com.jmane2026.simplyquests.network.*;
+import com.jmane2026.simplyquests.quest.CanvasText;
+import com.jmane2026.simplyquests.quest.Quest;
+import com.jmane2026.simplyquests.quest.QuestCanvasImage;
 import com.jmane2026.simplyquests.util.QuestClientData;
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.resources.sounds.SimpleSoundInstance;
@@ -58,14 +61,78 @@ public class SimplyQuestsClientPacketHandler {
     public static void handleSyncQuestTree(final SyncQuestTreePayload payload, final IPayloadContext context) {
         context.enqueueWork(() -> {
             var manager = QuestServerEvents.getQuestManager();
+            String myName = Minecraft.getInstance().player.getName().getString();
             
             // 1. Update the Manager (which handles sanitization internally now)
             manager.setChaptersFromList(payload.chapters());
             manager.setGroups(payload.groups());
 
             if (Minecraft.getInstance().screen instanceof QuestScreen screen) {
-                // FIX: If an editor is open, do NOT call init(). Flag it for later.
-                // This prevents "orphaned references" and sync-drift while editing.
+                // DEBUG: Log the arrival of new data
+                int totalQuests = payload.chapters().stream().mapToInt(c -> c.getQuests().size()).sum();
+
+                // FIX: Surgically update the screen's local data pointers without calling init()
+                // This ensures that even if a refresh is deferred, the screen is using the LATEST objects.
+                screen.allQuests.clear();
+                screen.questLookup.clear();
+                for (QuestChapter newChapter : payload.chapters()) {
+                    for (Quest newQuest : newChapter.getQuests()) {
+                        screen.allQuests.add(newQuest);
+                        screen.questLookup.put(newQuest.getId(), newQuest);
+
+                        // FIX 1: Lock Loopback Protection
+                        // If the server says unlocked, but we are mid-edit, keep the local lock red.
+                        if (newQuest.getLockedBy().isEmpty() && screen.originalQuest != null && screen.originalQuest.getId().equals(newQuest.getId())) {
+                            if (screen.isEditorOpen || screen.isTaskEditorOpen || screen.isRewardEditorOpen) {
+                                newQuest.setLockedBy(myName);
+                            }
+                        }
+                    }
+                }
+
+                // 2. Images & Texts
+                screen.allCanvasImages.clear();
+                screen.allCanvasTexts.clear();
+                for (QuestChapter newChapter : payload.chapters()) {
+                    for (QuestCanvasImage img : newChapter.getCanvasImages()) {
+                        img.setChapterName(newChapter.getName());
+                        screen.allCanvasImages.add(img);
+                    }
+                    for (CanvasText txt : newChapter.getCanvasTexts()) {
+                        txt.setChapterName(newChapter.getName());
+                        screen.allCanvasTexts.add(txt);
+                    }
+                }
+
+                // 3. Hot-Swap active pointers to the fresh server instances
+                // This ensures that if you are currently editing or looking at something,
+                // your local variables point to the newest data immediately.
+                if (screen.selectedQuest != null) {
+                    Quest updated = screen.questLookup.get(screen.selectedQuest.getId());
+                    if (updated != null) {
+                        screen.selectedQuest = updated;
+                    }
+
+                    if (screen.selectedCanvasImage != null) {
+                        String currentId = screen.selectedCanvasImage.getId();
+                        screen.selectedCanvasImage = screen.allCanvasImages.stream()
+                                .filter(i -> i.getId().equals(currentId))
+                                .findFirst().orElse(screen.selectedCanvasImage);
+
+                        // Update moving image reference if currently dragging
+                        if (screen.movingCanvasImage != null) screen.movingCanvasImage = screen.selectedCanvasImage;
+                    }
+
+                    if (screen.editingCanvasText != null) {
+                        String currentText = screen.editingCanvasText.getText();
+                        screen.editingCanvasText = screen.allCanvasTexts.stream()
+                                .filter(t -> t.getText().equals(currentText))
+                                .findFirst().orElse(screen.editingCanvasText);
+
+                        if (screen.movingCanvasText != null) screen.movingCanvasText = screen.editingCanvasText;
+                    }
+                }
+
                 if (screen.isEditorOpen || screen.isTaskEditorOpen || screen.isRewardEditorOpen || screen.isTextEditorOpen || screen.isSidebarEditing()) {
                     NEEDS_REFRESH = true;
                 } else {

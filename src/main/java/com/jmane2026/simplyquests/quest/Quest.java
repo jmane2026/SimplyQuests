@@ -11,40 +11,56 @@ import java.util.List;
 
 public class Quest {
     // CODEC for saving/loading to JSON
-    public static final Codec<Quest> CODEC = RecordCodecBuilder.create(instance -> instance.group(
-            Codec.STRING.fieldOf("id").forGetter(Quest::getId),
-            Codec.STRING.fieldOf("chapterName").forGetter(Quest::getChapterName),
-            Codec.STRING.fieldOf("title").forGetter(Quest::getTitle),
-            Codec.STRING.optionalFieldOf("subTitle", "").forGetter(Quest::getSubTitle),
-            Codec.STRING.optionalFieldOf("description", "A new quest awaits!").forGetter(Quest::getDescription),
-            Codec.DOUBLE.fieldOf("x").forGetter(Quest::getX),
-            Codec.DOUBLE.fieldOf("y").forGetter(Quest::getY),
-            // Enums (Shape and State) need to be encoded as Strings
-            Codec.stringResolver(QuestShape::name, QuestShape::valueOf).fieldOf("shape").forGetter(Quest::getShape),
-            Codec.FLOAT.fieldOf("size").forGetter(Quest::getSize),
-            Codec.BOOL.fieldOf("isOptional").forGetter(Quest::isOptional),
-            Codec.BOOL.fieldOf("isRepeatable").forGetter(Quest::isRepeatable),
-            Codec.STRING.listOf().fieldOf("dependencies").forGetter(Quest::getDependencies),
-            QuestTask.CODEC.listOf().optionalFieldOf("tasks", List.of()).forGetter(Quest::getTasks),
-            QuestReward.CODEC.listOf().optionalFieldOf("rewards", List.of()).forGetter(Quest::getRewards),
-            Codec.BOOL.optionalFieldOf("useTaskIcon", false).forGetter(Quest::isUseTaskIcon),
-            BuiltInRegistries.ITEM.byNameCodec().optionalFieldOf("logo", Items.PAPER).forGetter(Quest::getLogo)
-    ).apply(instance, (id, chapter, title, sub, desc, x, y, shape, size, opt, repeat, deps, tasks, rewards, useTaskIcon, logo) -> {
-        Quest q = new Quest(id, chapter, title, x, y);
-        q.setSubTitle(sub);
-        q.setDescription(desc);
-        q.setShape(shape);
+    private record QuestSettings(boolean isOptional, boolean isRepeatable, boolean useTaskIcon) {
+        public static final Codec<QuestSettings> CODEC = RecordCodecBuilder.create(inst -> inst.group(
+                Codec.BOOL.fieldOf("isOptional").forGetter(QuestSettings::isOptional),
+                Codec.BOOL.fieldOf("isRepeatable").forGetter(QuestSettings::isRepeatable),
+                Codec.BOOL.optionalFieldOf("useTaskIcon", false).forGetter(QuestSettings::useTaskIcon)
+        ).apply(inst, QuestSettings::new));
+    }
+
+    private record QuestData(String id, String chapterName, String title, String subTitle, String description,
+                             double x, double y, QuestShape shape, float size, QuestSettings settings,
+                             List<String> dependencies, List<QuestTask> tasks, List<QuestReward> rewards,
+                             String lockedBy, Item logo) {}
+
+    private static final Codec<QuestData> DATA_CODEC = RecordCodecBuilder.create(instance -> instance.group(
+            Codec.STRING.fieldOf("id").forGetter(QuestData::id),
+            Codec.STRING.fieldOf("chapterName").forGetter(QuestData::chapterName),
+            Codec.STRING.fieldOf("title").forGetter(QuestData::title),
+            Codec.STRING.optionalFieldOf("subTitle", "").forGetter(QuestData::subTitle),
+            Codec.STRING.optionalFieldOf("description", "A new quest awaits!").forGetter(QuestData::description),
+            Codec.DOUBLE.fieldOf("x").forGetter(QuestData::x),
+            Codec.DOUBLE.fieldOf("y").forGetter(QuestData::y),
+            Codec.stringResolver(QuestShape::name, QuestShape::valueOf).fieldOf("shape").forGetter(QuestData::shape),
+            Codec.FLOAT.fieldOf("size").forGetter(QuestData::size),
+            QuestSettings.CODEC.fieldOf("settings").forGetter(QuestData::settings),
+            Codec.STRING.listOf().fieldOf("dependencies").forGetter(QuestData::dependencies),
+            QuestTask.CODEC.listOf().optionalFieldOf("tasks", List.of()).forGetter(QuestData::tasks),
+            QuestReward.CODEC.listOf().optionalFieldOf("rewards", List.of()).forGetter(QuestData::rewards),
+            Codec.STRING.optionalFieldOf("lockedBy", "").forGetter(QuestData::lockedBy),
+            BuiltInRegistries.ITEM.byNameCodec().optionalFieldOf("logo", Items.PAPER).forGetter(QuestData::logo)
+    ).apply(instance, QuestData::new));
+
+    public static final Codec<Quest> CODEC = DATA_CODEC.xmap(d -> {
+        Quest q = new Quest(d.id(), d.chapterName(), d.title(), d.x(), d.y());
+        q.setSubTitle(d.subTitle());
+        q.setDescription(d.description());
+        q.setShape(d.shape());
         q.setState(QuestState.LOCKED); // All quests start locked and are unlocked via updateQuestStates()
-        q.setSize(size);
-        q.setOptional(opt);
-        q.setRepeatable(repeat);
-        q.getDependencies().addAll(deps);
-        q.getTasks().addAll(tasks);
-        q.getRewards().addAll(rewards);
-        q.setUseTaskIcon(useTaskIcon);
-        q.setLogo(logo);
+        q.setSize(d.size());
+        q.setOptional(d.settings().isOptional());
+        q.setRepeatable(d.settings().isRepeatable());
+        q.getDependencies().addAll(d.dependencies());
+        q.getTasks().addAll(d.tasks());
+        q.getRewards().addAll(d.rewards());
+        q.setUseTaskIcon(d.settings().useTaskIcon());
+        q.setLockedBy(d.lockedBy());
+        q.setLogo(d.logo());
         return q;
-    }));
+    }, q -> new QuestData(q.getId(), q.getChapterName(), q.getTitle(), q.getSubTitle(), q.getDescription(),
+            q.getX(), q.getY(), q.getShape(), q.getSize(), new QuestSettings(q.isOptional(), q.isRepeatable(), q.isUseTaskIcon()),
+            q.getDependencies(), q.getTasks(), q.getRewards(), q.getLockedBy(), q.getLogo()));
 
     // Core Data
     private String id;
@@ -66,6 +82,7 @@ public class Quest {
     private List<QuestTask> tasks = new ArrayList<>();
     private List<QuestReward> rewards = new ArrayList<>();
     private boolean useTaskIcon = false;
+    private String lockedBy = ""; // Transient field for multiplayer sync
 
     // Constructor (Unified)
     public Quest(String id, String chapterName, String title, double x, double y) {
@@ -81,6 +98,9 @@ public class Quest {
     public void setId(String id) { this.id = id; }
     public String getChapterName() { return chapterName; }
     public void setChapterName(String chapterName) { this.chapterName = chapterName; }
+
+    public String getLockedBy() { return lockedBy; }
+    public void setLockedBy(String lockedBy) { this.lockedBy = lockedBy; }
 
     public String getTitle() { return title; }
     public void setTitle(String title) { this.title = title; }

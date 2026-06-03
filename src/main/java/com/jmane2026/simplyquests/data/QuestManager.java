@@ -30,6 +30,7 @@ import java.util.*;
 public class QuestManager extends SimpleJsonResourceReloadListener {
     private static final Logger LOGGER = LogUtils.getLogger();
     private Map<Identifier, QuestChapter> chapters = new HashMap<>();
+    public final Map<String, Quest> questLookup = new HashMap<>();
     private List<QuestGroup> groups = new ArrayList<>();
     private List<StandaloneChapterInfo> rootChapters = new ArrayList<>();
     // Create a Gson instance for pretty-printing our quest files
@@ -52,6 +53,7 @@ public class QuestManager extends SimpleJsonResourceReloadListener {
      */
     public void setChaptersFromList(List<QuestChapter> list) {
         this.chapters.clear();
+        this.questLookup.clear();
         for (QuestChapter ch : list) {
             // FIX: Use the standardized strict regex to ensure IDs match the server's file system
             String sanitized = ch.getName().toLowerCase().replaceAll("[^a-z0-9/._-]", "_");
@@ -137,6 +139,12 @@ public class QuestManager extends SimpleJsonResourceReloadListener {
      * Forces all in-memory chapters to align their metadata (Group, Order) with the manifest.
      */
     private void reconcileChapterStructure() {
+        this.questLookup.clear();
+        for (QuestChapter chapter : this.chapters.values()) {
+            for (Quest q : chapter.getQuests()) {
+                this.questLookup.put(q.getId(), q);
+            }
+        }
         for (QuestChapter chapter : this.chapters.values()) {
             boolean found = false;
             // Check if chapter belongs to a group in the manifest
@@ -244,6 +252,7 @@ public class QuestManager extends SimpleJsonResourceReloadListener {
         Map<Identifier, QuestChapter> mutable = new HashMap<>(this.chapters);
         mutable.put(id, chapter);
         this.chapters = mutable;
+        reconcileChapterStructure();
         updateQuestStates(new PlayerQuestProgress()); // Refresh AVAILABLE/LOCKED states using a blank progress template
     }
 
@@ -259,6 +268,7 @@ public class QuestManager extends SimpleJsonResourceReloadListener {
             Map<Identifier, QuestChapter> mutable = new HashMap<>(this.chapters);
             mutable.remove(id);
             this.chapters = mutable;
+            reconcileChapterStructure();
             LOGGER.info("Simply Quests: Deleted old chapter file {}", file.getAbsolutePath());
         }
     }

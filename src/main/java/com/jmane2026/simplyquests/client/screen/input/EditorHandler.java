@@ -2,11 +2,13 @@ package com.jmane2026.simplyquests.client.screen.input;
 
 import com.jmane2026.simplyquests.client.screen.QuestEditorUI;
 import com.jmane2026.simplyquests.client.screen.QuestScreen;
+import com.jmane2026.simplyquests.network.QuestLockPayload;
 import com.jmane2026.simplyquests.quest.Quest;
 import com.jmane2026.simplyquests.quest.QuestReward;
 import com.jmane2026.simplyquests.quest.QuestTask;
 import net.minecraft.client.input.KeyEvent;
 import net.minecraft.world.item.Items;
+import net.neoforged.neoforge.client.network.ClientPacketDistributor;
 import org.lwjgl.glfw.GLFW;
 
 import java.util.ArrayList;
@@ -86,6 +88,7 @@ public class EditorHandler {
 
             screen.saveChapterData(screen.selectedQuest.getChapterName());
             screen.isTaskEditorOpen = false; ui.isTaskMode = false; QuestScreen.playClickSound();
+            screen.originalQuest = null; // FIX: Release local reference to allow re-locking
             return true;
         }
 
@@ -93,6 +96,10 @@ public class EditorHandler {
             if (ui.isNameOpen || ui.isQuantityOpen) {
                 ui.closePicker();
             } else {
+                if (screen.originalQuest != null) {
+                    screen.originalQuest.setLockedBy(""); // Local loopback
+                    ClientPacketDistributor.sendToServer(new QuestLockPayload(screen.originalQuest.getId(), false));
+                }
                 screen.isTaskEditorOpen = false; // FIX: Corrected target editor
                 ui.isTaskMode = false;
                 screen.checkPendingRefresh();
@@ -181,6 +188,10 @@ public class EditorHandler {
             if (ui.isTitleOpen || ui.isSubTitleOpen || ui.isDescriptionOpen || ui.isIconPickerOpen || ui.isShapePickerOpen || ui.isDependencyPickerOpen) {
                 ui.closePicker(); // This method already calls playClickSound()
             } else {
+                if (screen.originalQuest != null) {
+                    screen.originalQuest.setLockedBy(""); // Local loopback
+                    ClientPacketDistributor.sendToServer(new QuestLockPayload(screen.originalQuest.getId(), false));
+                }
                 screen.isEditorOpen = false;
                 QuestScreen.playClickSound();
             }
@@ -364,6 +375,7 @@ public class EditorHandler {
             screen.saveChapterData(screen.selectedQuest.getChapterName());
             screen.isRewardEditorOpen = false;
             ui.isRewardModeOpen = false;
+            screen.originalQuest = null; // FIX: Release local reference
             QuestScreen.playClickSound();
             return true;
         }
@@ -384,6 +396,10 @@ public class EditorHandler {
             if (ui.isNameOpen || ui.isQuantityOpen || ui.isTypePickerOpen || ui.isIconPickerOpen) {
                 ui.closePicker();
             } else {
+                if (screen.originalQuest != null) {
+                    screen.originalQuest.setLockedBy(""); // Local loopback
+                    ClientPacketDistributor.sendToServer(new QuestLockPayload(screen.originalQuest.getId(), false));
+                }
                 screen.isRewardEditorOpen = false;
                 ui.isRewardModeOpen = false;
                 QuestScreen.playClickSound();
