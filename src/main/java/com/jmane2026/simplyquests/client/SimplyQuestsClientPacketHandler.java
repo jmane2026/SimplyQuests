@@ -104,6 +104,13 @@ public class SimplyQuestsClientPacketHandler {
                     }
                 }
 
+                // FIX: Update the "Editor" reference to point to the fresh server instance.
+                // This ensures that when you hit 'Save', you are modifying the object currently in the registry.
+                if (screen.originalQuest != null) {
+                    Quest updatedOriginal = screen.questLookup.get(screen.originalQuest.getId());
+                    if (updatedOriginal != null) screen.originalQuest = updatedOriginal;
+                }
+
                 // 3. Hot-Swap active pointers to the fresh server instances
                 // This ensures that if you are currently editing or looking at something,
                 // your local variables point to the newest data immediately.
