@@ -100,27 +100,27 @@ public class SimplyQuestsClientPacketHandler {
 
                 if (screen.selectedQuest != null) {
                     Quest updated = screen.questLookup.get(screen.selectedQuest.getId());
-                    if (updated != null) {
-                        screen.selectedQuest = updated;
-                    }
+                    if (updated != null) screen.selectedQuest = updated;
+                }
 
-                    if (screen.selectedCanvasImage != null) {
-                        String currentId = screen.selectedCanvasImage.getId();
-                        screen.selectedCanvasImage = screen.allCanvasImages.stream()
-                                .filter(i -> i.getId().equals(currentId))
-                                .findFirst().orElse(screen.selectedCanvasImage);
+                if (screen.selectedCanvasImage != null) {
+                    String currentId = screen.selectedCanvasImage.getId();
+                    screen.allCanvasImages.stream()
+                            .filter(i -> i.getId().equals(currentId))
+                            .findFirst().ifPresent(fresh -> {
+                                screen.selectedCanvasImage = fresh;
+                                if (screen.movingCanvasImage != null) screen.movingCanvasImage = fresh;
+                            });
+                }
 
-                        if (screen.movingCanvasImage != null) screen.movingCanvasImage = screen.selectedCanvasImage;
-                    }
-
-                    if (screen.editingCanvasText != null) {
-                        String currentText = screen.editingCanvasText.getText();
-                        screen.editingCanvasText = screen.allCanvasTexts.stream()
-                                .filter(t -> t.getText().equals(currentText))
-                                .findFirst().orElse(screen.editingCanvasText);
-
-                        if (screen.movingCanvasText != null) screen.movingCanvasText = screen.editingCanvasText;
-                    }
+                if (screen.originalCanvasText != null) {
+                    String tid = screen.originalCanvasText.getId();
+                    screen.allCanvasTexts.stream()
+                            .filter(t -> t.getId().equals(tid))
+                            .findFirst().ifPresent(fresh -> {
+                                screen.originalCanvasText = fresh;
+                                if (screen.movingCanvasText != null) screen.movingCanvasText = fresh;
+                            });
                 }
 
                 if (screen.isEditorOpen || screen.isTaskEditorOpen || screen.isRewardEditorOpen || screen.isTextEditorOpen || screen.isSidebarEditing()) {

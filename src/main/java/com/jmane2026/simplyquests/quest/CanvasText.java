@@ -5,6 +5,7 @@ import com.mojang.serialization.codecs.RecordCodecBuilder;
 
 public class CanvasText {
     public static final Codec<CanvasText> CODEC = RecordCodecBuilder.create(instance -> instance.group(
+            Codec.STRING.fieldOf("id").forGetter(CanvasText::getId),
             Codec.STRING.fieldOf("text").forGetter(CanvasText::getText),
             Codec.DOUBLE.fieldOf("x").forGetter(CanvasText::getX),
             Codec.DOUBLE.fieldOf("y").forGetter(CanvasText::getY),
@@ -12,6 +13,7 @@ public class CanvasText {
             Codec.INT.optionalFieldOf("color", 0xFFFFFFFF).forGetter(CanvasText::getColor)
     ).apply(instance, CanvasText::new));
 
+    private String id;
     private String text;
     private double x;
     private double y;
@@ -19,7 +21,8 @@ public class CanvasText {
     private int color;
     private String chapterName;
 
-    public CanvasText(String text, double x, double y, float scale, int color) {
+    public CanvasText(String id, String text, double x, double y, float scale, int color) {
+        this.id = id;
         this.text = text;
         this.x = x;
         this.y = y;
@@ -74,4 +77,7 @@ public class CanvasText {
     public void setChapterName(String chapterName) {
         this.chapterName = chapterName;
     }
+
+    public String getId() { return id; }
+    public void setId(String id) { this.id = id; }
 }

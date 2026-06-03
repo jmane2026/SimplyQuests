@@ -2421,12 +2421,9 @@ public class QuestScreen extends Screen {
             } else if (this.isTextEditorOpen) {
 
                 editingCanvasText.setText(editorUI.searchQuery);
-                if (allCanvasTexts.contains(originalCanvasText)) {
-                    int index = allCanvasTexts.indexOf(originalCanvasText);
-                    allCanvasTexts.set(index, editingCanvasText);
-                } else {
-                    allCanvasTexts.add(editingCanvasText);
-                }
+                allCanvasTexts.removeIf(t -> t.getId().equals(editingCanvasText.getId()));
+                allCanvasTexts.add(editingCanvasText);
+
                 saveChapterData(editingCanvasText.getChapterName());
                 editorUI.closePicker();
                 isTextEditorOpen = false;
@@ -3289,8 +3286,8 @@ public class QuestScreen extends Screen {
             if (optionIndex == 0) {
                 openTextEditor(editingCanvasText);
             } else if (optionIndex == 1) {
-                ClientPacketDistributor.sendToServer(new DeleteCanvasTextPayload(editingCanvasText.getText(), editingCanvasText.getX(), editingCanvasText.getY(), editingCanvasText.getChapterName()));
-                allCanvasTexts.remove(editingCanvasText);
+                ClientPacketDistributor.sendToServer(new DeleteCanvasTextPayload(editingCanvasText.getId(), editingCanvasText.getChapterName()));
+                allCanvasTexts.removeIf(t -> t.getId().equals(editingCanvasText.getId()));
                 editingCanvasText = null;
             } else if (optionIndex == 2) {
                 this.movingCanvasText = this.editingCanvasText;
@@ -3469,8 +3466,9 @@ public class QuestScreen extends Screen {
                 this.editorUI.cursorIndex = 9;
                 this.isEditorOpen = true;
             } else if (optionIndex == 1) {
-                CanvasText ct = new CanvasText("New Text", snappedX, snappedY, 1.0f, COL_TEXT);
-                ct.setChapterName(this.selectedChapter.getName());
+                String textId = "txt_" + Long.toHexString(System.currentTimeMillis());
+                CanvasText ct = new CanvasText(textId, "New Text", snappedX, snappedY, 1.0f, COL_TEXT);
+                ct.setChapterName(this.selectedChapter.getId());
                 openTextEditor(ct);
             } else if (optionIndex == 2) {
                 openImagePicker(snappedX, snappedY);
@@ -4386,7 +4384,7 @@ public class QuestScreen extends Screen {
     private void openTextEditor(CanvasText ct) {
         this.originalCanvasText = ct;
 
-        this.editingCanvasText = new CanvasText(ct.getText(), ct.getX(), ct.getY(), ct.getScale(), ct.getColor());
+        this.editingCanvasText = new CanvasText(ct.getId(), ct.getText(), ct.getX(), ct.getY(), ct.getScale(), ct.getColor());
         this.editingCanvasText.setChapterName(ct.getChapterName());
         this.editorUI.searchQuery = ct.getText();
         this.editorUI.cursorIndex = this.editorUI.searchQuery.length();

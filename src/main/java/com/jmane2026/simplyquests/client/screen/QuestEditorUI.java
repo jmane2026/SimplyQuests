@@ -1292,7 +1292,6 @@ public class QuestEditorUI {
         this.selectionStart = -1;
         this.selectionEnd = -1;
 
-        // Force refresh for the next time the picker is opened
         this.lastDependencyQuery = null;
         this.lastQuestCount = -1;
 

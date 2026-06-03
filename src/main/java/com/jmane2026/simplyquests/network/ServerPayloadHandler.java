@@ -54,8 +54,8 @@ public class ServerPayloadHandler {
         if (!isOp(context)) return;
 
         context.enqueueWork(() -> {
-            String chName = payload.chapter().getName();
             String playerName = context.player().getName().getString();
+            String chName = payload.chapter().getName();
             Identifier chId = Identifier.fromNamespaceAndPath("simplyquests", chName.toLowerCase().replaceAll("[^a-z0-9/._-]", "_"));
 
             QuestChapter oldChapter = QuestServerEvents.getQuestManager().getChapters().get(chId);
@@ -80,8 +80,8 @@ public class ServerPayloadHandler {
                 questMap.values().stream().filter(q -> q.getLockedBy().equals(playerName)).forEach(q -> q.setLockedBy(""));
 
                 Map<String, CanvasText> textMap = new LinkedHashMap<>();
-                oldChapter.getCanvasTexts().forEach(t -> textMap.put(t.getText() + (int) t.getX() + (int) t.getY(), t));
-                payload.chapter().getCanvasTexts().forEach(t -> textMap.put(t.getText() + t.getX() + t.getY(), t));
+                oldChapter.getCanvasTexts().forEach(t -> textMap.put(t.getId(), t));
+                payload.chapter().getCanvasTexts().forEach(t -> textMap.put(t.getId(), t));
 
                 Map<String, QuestCanvasImage> imgMap = new LinkedHashMap<>();
                 oldChapter.getCanvasImages().forEach(i -> imgMap.put(i.getId(), i));
@@ -147,11 +147,7 @@ public class ServerPayloadHandler {
             QuestChapter chapter = QuestServerEvents.getQuestManager().getChapters().get(chId);
             if (chapter != null) {
                 List<CanvasText> mutableTexts = new ArrayList<>(chapter.getCanvasTexts());
-                mutableTexts.removeIf(t ->
-                        t.getText().equals(payload.text()) &&
-                                Math.abs(t.getX() - payload.x()) < 0.1 &&
-                                Math.abs(t.getY() - payload.y()) < 0.1
-                );
+                mutableTexts.removeIf(t -> t.getId().equals(payload.textId()));
                 QuestChapter updatedChapter = new QuestChapter(
                         chapter.getGroupName(), chapter.getGroupOrder(), chapter.getGroupColor(),
                         chapter.getName(), chapter.getTitle(), chapter.getChapterOrder(),
