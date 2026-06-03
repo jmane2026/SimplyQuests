@@ -1,7 +1,7 @@
 package com.jmane2026.simplyquests.client.screen;
 
-import com.jmane2026.simplyquests.client.SimplyQuestsClientPacketHandler;
 import com.jmane2026.simplyquests.client.ClientQuestEvents;
+import com.jmane2026.simplyquests.client.SimplyQuestsClientPacketHandler;
 import com.jmane2026.simplyquests.client.screen.input.CanvasHandler;
 import com.jmane2026.simplyquests.client.screen.input.EditorHandler;
 import com.jmane2026.simplyquests.client.screen.input.PickerHandler;
@@ -11,17 +11,18 @@ import com.jmane2026.simplyquests.data.QuestGroup;
 import com.jmane2026.simplyquests.network.*;
 import com.jmane2026.simplyquests.quest.*;
 import com.jmane2026.simplyquests.util.QuestClientData;
+import com.mojang.blaze3d.platform.NativeImage;
 import net.minecraft.client.Minecraft;
-import com.jmane2026.simplyquests.events.QuestServerEvents;
 import net.minecraft.client.gui.GuiGraphicsExtractor;
 import net.minecraft.client.gui.screens.Screen;
 import net.minecraft.client.input.CharacterEvent;
 import net.minecraft.client.input.KeyEvent;
 import net.minecraft.client.input.MouseButtonEvent;
+import net.minecraft.client.renderer.RenderPipelines;
+import net.minecraft.client.renderer.texture.DynamicTexture;
 import net.minecraft.client.resources.sounds.SimpleSoundInstance;
 import net.minecraft.network.chat.Component;
 import net.minecraft.resources.Identifier;
-import net.minecraft.client.renderer.texture.DynamicTexture;
 import net.minecraft.server.players.NameAndId;
 import net.minecraft.sounds.SoundEvents;
 import net.minecraft.util.Util;
@@ -30,12 +31,10 @@ import net.minecraft.world.item.ItemStack;
 import net.minecraft.world.item.Items;
 import net.neoforged.neoforge.client.network.ClientPacketDistributor;
 import org.joml.Vector2f;
-import org.lwjgl.glfw.GLFW;
-import org.lwjgl.util.tinyfd.TinyFileDialogs;
 import org.lwjgl.PointerBuffer;
+import org.lwjgl.glfw.GLFW;
 import org.lwjgl.system.MemoryStack;
-import com.mojang.blaze3d.platform.NativeImage;
-import net.minecraft.client.renderer.RenderPipelines;
+import org.lwjgl.util.tinyfd.TinyFileDialogs;
 
 import java.awt.*;
 import java.io.ByteArrayInputStream;
@@ -49,17 +48,18 @@ public class QuestScreen extends Screen {
     public final List<QuestCanvasImage> allCanvasImages = new ArrayList<>();
     private static final Map<String, Identifier> DYNAMIC_IMAGES = new HashMap<>();
     private static final Set<String> PENDING_REQUESTS = new HashSet<>();
-    
-    // --- IMAGE MANIPULATION STATE ---
+
     public QuestCanvasImage selectedCanvasImage = null;
-    public enum ManipulationMode { NONE, SCALE, ROTATE, ALPHA }
+
+    public enum ManipulationMode {NONE, SCALE, ROTATE, ALPHA}
+
     public ManipulationMode currentImageMode = ManipulationMode.NONE;
     public double initialRotateAngle = 0;
     public double initialImageRotation = 0;
     public boolean isDraggingAlphaSlider = false;
     public boolean isDraggingScaleHandle = false;
     public boolean isDraggingRotateHandle = false;
-    public int scaleHandleIndex = -1; // 0-7: TL, T, TR, R, BR, B, BL, L
+    public int scaleHandleIndex = -1;
     private double startX, startY, startW, startH;
 
     public double offsetX = 0;
@@ -91,7 +91,6 @@ public class QuestScreen extends Screen {
     public Quest selectedQuest = null;
     private double descScrollOffset = 0;
 
-    // --- Centralized UI Colors (Ready for Config) ---
     public static int COL_UI_BG = SimplyQuestsConfig.UI_BG.get();
     public static int COL_UI_INNER_BG = SimplyQuestsConfig.UI_INNER_BG.get();
     public static int COL_UI_BORDER = SimplyQuestsConfig.UI_BORDER.get();
@@ -104,13 +103,11 @@ public class QuestScreen extends Screen {
     public static int COL_INPUT_BG = SimplyQuestsConfig.INPUT_BG.get();
     public static int COL_TEXT = SimplyQuestsConfig.TEXT.get();
 
-    // State Colors
     public static int COL_STATE_LOCKED = SimplyQuestsConfig.STATE_LOCKED.get();
     public static int COL_STATE_AVAILABLE = SimplyQuestsConfig.STATE_AVAILABLE.get();
-    public static int COL_STATE_PARTIAL = SimplyQuestsConfig.STATE_PARTIAL.get(); // Brighter default set in Config
+    public static int COL_STATE_PARTIAL = SimplyQuestsConfig.STATE_PARTIAL.get();
     public static int COL_STATE_COMPLETED = SimplyQuestsConfig.STATE_COMPLETED.get();
 
-    // Interaction Colors
     public static int COL_HOVER_UI = SimplyQuestsConfig.HOVER_UI.get();
     public static int COL_HOVER_MENU = SimplyQuestsConfig.HOVER_MENU.get();
     public static int COL_SELECTION = SimplyQuestsConfig.SELECTION.get();
@@ -203,7 +200,6 @@ public class QuestScreen extends Screen {
     public boolean isEditingChapterIcon = false;
     public final QuestEditorUI editorUI = new QuestEditorUI();
 
-    // A constant for row height
     private static final String[][] CONFIG_ITEM_MAP = {
             {"Main Window BG", "COL_UI_BG"}, {"Editor Area BG", "COL_UI_INNER_BG"}, {"Window Border", "COL_UI_BORDER"},
             {"Sidebar BG", "COL_SIDEBAR_BG"}, {"Sidebar Border", "COL_SIDEBAR_BORDER"},
@@ -229,8 +225,6 @@ public class QuestScreen extends Screen {
     public final Map<String, Quest> questLookup = new HashMap<>();
 
     public void registerQuest(Quest quest) {
-        // FIX: Prevent duplicates. If we already have this quest ID, remove the old instance
-        // before adding the fresh one from the server or editor.
         if (questLookup.containsKey(quest.getId())) {
             allQuests.remove(questLookup.get(quest.getId()));
         }
@@ -239,9 +233,6 @@ public class QuestScreen extends Screen {
         this.questLookup.put(quest.getId(), quest);
     }
 
-    /**
-     * Helper to get the current color for a quest state based on config variables.
-     */
     public static int getStateColor(QuestState state) {
         return switch (state) {
             case LOCKED -> COL_STATE_LOCKED;
@@ -272,7 +263,6 @@ public class QuestScreen extends Screen {
             if (!allDependenciesCompleted) {
                 quest.setState(QuestState.LOCKED);
             } else {
-                // Check task progress from the synced client map
                 boolean anyStarted = false;
                 for (QuestTask t : quest.getTasks()) {
                     if (taskProgress.getOrDefault(t.getId(), 0) > 0) anyStarted = true;
@@ -281,7 +271,6 @@ public class QuestScreen extends Screen {
             }
         }
 
-        // Update Sidebar Chapter States
         for (SidebarEntry entry : this.sidebarEntries) {
             if (entry instanceof SidebarChapter ch) {
                 updateSidebarChapterState(ch);
@@ -294,7 +283,6 @@ public class QuestScreen extends Screen {
     }
 
     private void updateSidebarChapterState(SidebarChapter ch) {
-        // FIX: Filter quests using the sanitized internal ID, not the display name
         List<Quest> chapterQuests = allQuests.stream().filter(q -> q.getChapterName().equals(ch.getId())).toList();
         if (chapterQuests.isEmpty()) return;
 
@@ -317,7 +305,6 @@ public class QuestScreen extends Screen {
 
     @Override
     public void init() {
-        // 0. Store current live state to prevent "jumps" during data refreshes (like group toggles)
         String previousId = (this.selectedChapter != null) ? this.selectedChapter.getId() : null;
         double liveX = this.offsetX;
         double liveY = this.offsetY;
@@ -325,48 +312,38 @@ public class QuestScreen extends Screen {
 
         super.init();
 
-        if (checkPermissions())
-        {
+        if (checkPermissions()) {
             QuestGlobalState.isEditModeEnabled = SimplyQuestsClientPacketHandler.IS_EDIT_MODE_ALLOWED;
         } else {
             QuestGlobalState.isEditModeEnabled = false;
         }
 
-        // Clear local caches to force a rebuild from the QuestManager data
         this.sidebarEntries.clear();
         this.allQuests.clear();
         this.questLookup.clear();
         this.allCanvasImages.clear();
         this.allCanvasTexts.clear();
 
-        // --- LOAD REAL DATA FROM MANAGER ---
         if (this.sidebarEntries.isEmpty()) {
-            // FIX: Pull from the Client Cache (SimplyQuestsClientPacketHandler) instead of the Server Manager.
-            // This ensures data is visible when playing on a dedicated server.
             Map<Identifier, QuestChapter> chapterMap = SimplyQuestsClientPacketHandler.getChapters();
             List<QuestGroup> groupDefinitions = SimplyQuestsClientPacketHandler.getGroups();
 
-            // Use a map to collect root entries and their intended order to avoid TreeMap collisions
             Map<SidebarEntry, Integer> rootOrderMap = new HashMap<>();
             Map<String, SidebarGroup> groupMap = new HashMap<>();
 
-            // 1. Pre-populate Groups from the manifest
             for (QuestGroup gDef : groupDefinitions) {
                 String displayName = (gDef.getTitle() != null && !gDef.getTitle().isEmpty()) ? gDef.getTitle() : gDef.getName();
                 SidebarGroup g = new SidebarGroup(displayName, gDef.getColor());
-                // Restore the internal ID from the manifest
                 g.setName(gDef.getName());
-                
-                // LOCAL OVERRIDE: Prioritize local expansion preferences over server defaults
+
                 Boolean localExpanded = QuestClientData.isGroupExpanded(gDef.getName());
                 boolean targetExpanded = (localExpanded != null) ? localExpanded : gDef.isExpanded();
                 if (g.isExpanded() != targetExpanded) g.toggleExpanded();
-                
+
                 groupMap.put(gDef.getName(), g);
                 rootOrderMap.put(g, gDef.getOrder());
             }
 
-            // 1. Convert to list and sort by Group Order, then Chapter Order
             List<QuestChapter> sortedChapters = new ArrayList<>(chapterMap.values());
             sortedChapters.sort(Comparator
                     .comparingInt(QuestChapter::getGroupOrder)
@@ -376,19 +353,16 @@ public class QuestScreen extends Screen {
                 String groupName = chapter.getGroupName();
                 String displayName = (chapter.getTitle() != null && !chapter.getTitle().isEmpty()) ? chapter.getTitle() : chapter.getName();
                 SidebarChapter sideChapter = new SidebarChapter(displayName);
-                sideChapter.setId(chapter.getName()); // Capture the sanitized internal ID
+                sideChapter.setId(chapter.getName());
                 sideChapter.setIconStack(new ItemStack(chapter.getIcon()));
-                sideChapter.setState(chapter.getState()); // Sync initial state
-                sideChapter.setOffsetX(chapter.getOffsetX()); // FIX: Restore camera X
-                sideChapter.setOffsetY(chapter.getOffsetY()); // FIX: Restore camera Y
+                sideChapter.setState(chapter.getState());
+                sideChapter.setOffsetX(chapter.getOffsetX());
+                sideChapter.setOffsetY(chapter.getOffsetY());
                 sideChapter.setZoom(chapter.getZoom());
 
-                // If group is empty or "Ungrouped", add directly to root, otherwise add to group
                 if (groupName == null || groupName.isEmpty() || groupName.equals("Ungrouped")) {
                     rootOrderMap.put(sideChapter, chapter.getGroupOrder());
                 } else {
-                    // FIX: Sanitize the groupName from the chapter file during lookup
-                    // to ensure it matches the ID stored in the groupMap manifest
                     SidebarGroup group = groupMap.get(Quest.sanitizePath(groupName));
                     if (group == null) {
                         String sanitizedGroupName = Quest.sanitizePath(groupName);
@@ -401,33 +375,26 @@ public class QuestScreen extends Screen {
                     }
                 }
 
-                // 3. Register all Quests in this chapter
                 for (Quest q : chapter.getQuests()) {
-                    allQuests.add(q);
                     registerQuest(q);
                 }
-                // 4. Load Canvas Texts
                 for (CanvasText ct : chapter.getCanvasTexts()) {
                     ct.setChapterName(chapter.getName());
                     this.allCanvasTexts.add(ct);
                 }
-                // 5. Load Canvas Images
                 for (QuestCanvasImage ci : chapter.getCanvasImages()) {
                     ci.setChapterName(chapter.getName());
                     this.allCanvasImages.add(ci);
                 }
             }
 
-            // 4. Sort and build final sidebar list
             List<SidebarEntry> sortedRoot = new ArrayList<>(rootOrderMap.keySet());
             sortedRoot.sort(Comparator.comparingInt(rootOrderMap::get));
             this.sidebarEntries.addAll(sortedRoot);
 
             updateQuestStates();
         }
-        // ------------------------------------
 
-        // 1. Save the name of the currently selected chapter if it exists
         if (this.selectedChapter != null) {
             this.pendingChapterName = this.selectedChapter.getId();
         } else {
@@ -437,7 +404,6 @@ public class QuestScreen extends Screen {
         this.lastTimeMillis = Util.getMillis();
         this.zoom = QuestClientData.getZoom();
 
-        // 3. Try to re-select the chapter by name
         boolean found = false;
         if (this.pendingChapterName != null) {
             for (SidebarEntry entry : this.sidebarEntries) {
@@ -460,7 +426,6 @@ public class QuestScreen extends Screen {
             }
         }
 
-        // 4. Fallback: If not found (or first time), pick the first one
         if (!found && !this.sidebarEntries.isEmpty()) {
             for (SidebarEntry entry : this.sidebarEntries) {
                 if (entry instanceof SidebarGroup group && !group.getChapters().isEmpty()) {
@@ -473,15 +438,12 @@ public class QuestScreen extends Screen {
             }
         }
 
-        // 5. Restore camera state
         if (this.selectedChapter != null) {
-            // If we are refreshing data for the same chapter, keep the live camera!
             if (this.selectedChapter.getId().equals(previousId)) {
                 this.offsetX = liveX;
                 this.offsetY = liveY;
                 this.zoom = liveZoom;
             } else {
-                // FIX: Prioritize Local View Preferences over Server Master Defaults
                 QuestClientData.ViewState localView = QuestClientData.getChapterViewState(this.selectedChapter.getId());
                 if (localView != null) {
                     this.offsetX = localView.x();
@@ -499,17 +461,15 @@ public class QuestScreen extends Screen {
             this.zoom = QuestClientData.getZoom();
         }
 
-        this.pendingChapterName = null; // Clear the temporary storage
+        this.pendingChapterName = null;
     }
 
     @Override
     public void extractRenderState(GuiGraphicsExtractor graphics, int mouseX, int mouseY, float partialTick) {
-        // Constant check for background data updates (Real-time Sync)
         checkPendingRefresh();
 
         super.extractRenderState(graphics, mouseX, mouseY, partialTick);
 
-        // Define screen center early so it's available for all manipulation and matrix math
         float absoluteCenterX = (float) (this.width / 2.0);
         float absoluteCenterY = (float) (this.height / 2.0);
 
@@ -521,8 +481,7 @@ public class QuestScreen extends Screen {
         boolean isLeftButtonDown = GLFW.glfwGetMouseButton(windowHandle, GLFW.GLFW_MOUSE_BUTTON_1) == GLFW.GLFW_PRESS;
 
         if (!isLeftButtonDown) {
-            // FIX: Perform a single save when the manipulation is finished.
-            // This prevents the background sync from orphaning the selected image reference.
+
             if (this.isDraggingAlphaSlider || this.isDraggingScaleHandle || this.isDraggingRotateHandle) {
                 if (selectedCanvasImage != null) {
                     saveChapterData(selectedCanvasImage.getChapterName());
@@ -534,28 +493,25 @@ public class QuestScreen extends Screen {
             this.scaleHandleIndex = -1;
         }
 
-        // Handle Slider Dragging logic
         if (this.isDraggingSizeSlider && this.isEditorOpen && this.questToModify != null) {
             if (!isLeftButtonDown) {
                 this.isDraggingSizeSlider = false;
             } else {
                 int windowWidth = 300;
                 int panelX = (this.width - windowWidth) / 2;
-                int sliderX = panelX + 100; // Matching valueX (panelX + 90 + 10)
+                int sliderX = panelX + 100;
                 int editBtnWidth = 45;
                 int editBtnLeft = panelX + windowWidth - 15 - editBtnWidth;
                 int sliderW = editBtnLeft - sliderX - 10;
 
-                float mouseRelX = (float)mouseX - sliderX;
+                float mouseRelX = (float) mouseX - sliderX;
                 float progress = Math.max(0, Math.min(1, mouseRelX / sliderW));
 
-                // Scale: 1.0 (24px) to 10.0 (240px)
                 float newSize = 24f + (progress * (240f - 24f));
                 this.questToModify.setSize(newSize);
             }
         }
 
-        // Handle Text Scale Slider Dragging
         if (this.isDraggingTextSizeSlider && this.isTextEditorOpen && this.editingCanvasText != null) {
             if (!isLeftButtonDown) {
                 this.isDraggingTextSizeSlider = false;
@@ -565,7 +521,7 @@ public class QuestScreen extends Screen {
                 int sliderX = panelX + 90;
                 int sliderW = 95;
 
-                float mouseRelX = (float)mouseX - sliderX;
+                float mouseRelX = (float) mouseX - sliderX;
                 float progress = Math.max(0, Math.min(1, mouseRelX / sliderW));
 
                 float newScale = 0.5f + (progress * (5.0f - 0.5f));
@@ -573,7 +529,6 @@ public class QuestScreen extends Screen {
             }
         }
 
-        // Handle Grid Size Slider Dragging
         if (this.isDraggingGridSlider && this.isSettingsOpen) {
             if (!isLeftButtonDown) {
                 this.isDraggingGridSlider = false;
@@ -587,7 +542,7 @@ public class QuestScreen extends Screen {
                 int sliderX = rowX + 70;
                 int sliderW = 80;
 
-                float mouseRelX = (float)mouseX - sliderX;
+                float mouseRelX = (float) mouseX - sliderX;
                 float progress = Math.max(0, Math.min(1, mouseRelX / sliderW));
 
                 GRID_SNAP = 4.0 + (progress * (32.0 - 4.0));
@@ -595,17 +550,15 @@ public class QuestScreen extends Screen {
             }
         }
 
-        // Handle Color Picker Window Dragging
         if (this.isDraggingPickerWindow && editorUI.isColorPickerOpen) {
             if (!isLeftButtonDown) {
                 this.isDraggingPickerWindow = false;
             } else {
-                this.pickerX = (int)(mouseX - dragOffsetX);
-                this.pickerY = (int)(mouseY - dragOffsetY);
+                this.pickerX = (int) (mouseX - dragOffsetX);
+                this.pickerY = (int) (mouseY - dragOffsetY);
             }
         }
 
-        // 0. Unified Color Picker Dragging logic (Canvas Text and UI Settings)
         if (editorUI.isColorPickerOpen && (this.isTextEditorOpen || this.isSettingsOpen)) {
             int windowWidth = this.isSettingsOpen ? 400 : 200;
             int windowHeight = this.isSettingsOpen ? 240 : 145;
@@ -614,31 +567,28 @@ public class QuestScreen extends Screen {
             int pickerWidth = 135;
             int pickerHeight = 168;
 
-            // Use the instance variables (this.pickerX/Y) so dragging is actually reflected!
             QuestEditorUI.PickerBounds b = new QuestEditorUI.PickerBounds(this.pickerX, this.pickerY, pickerWidth, pickerHeight, 16);
 
-            clampPickerPosition(pickerWidth, pickerHeight); // Continuous safety clamp while dragging
+            clampPickerPosition(pickerWidth, pickerHeight);
 
             if (!isLeftButtonDown) {
                 this.isDraggingHue = false;
                 this.isDraggingSB = false;
                 this.isDraggingAlpha = false;
             } else if (this.isDraggingHue || this.isDraggingSB || this.isDraggingAlpha) {
-                // Only update the pending color while dragging, don't apply to target yet
+
                 this.pendingPickerColor = editorUI.getColorAt(mouseX, mouseY, b, this.pendingPickerColor, isDraggingSB, isDraggingHue, isDraggingAlpha);
                 editorUI.hexQuery = String.format("%06X", (this.pendingPickerColor & 0xFFFFFF));
             }
         }
 
-        // --- LIVE IMAGE MANIPULATION ---
         if (isLeftButtonDown && selectedCanvasImage != null) {
             double worldMouseX = this.offsetX + ((mouseX - absoluteCenterX) / this.zoom);
             double worldMouseY = this.offsetY + ((mouseY - absoluteCenterY) / this.zoom);
             double angle = -selectedCanvasImage.getRotation();
 
             if (isDraggingScaleHandle) {
-                // FIX: Calculate mouse position relative to the FIXED startX/startY captured at the beginning of the drag.
-                // This breaks the feedback loop that was causing the "jumping" behavior.
+
                 double dx = worldMouseX - startX;
                 double dy = worldMouseY - startY;
                 double localMouseX = dx * Math.cos(angle) - dy * Math.sin(angle);
@@ -649,28 +599,23 @@ public class QuestScreen extends Screen {
                 double localShiftX = 0;
                 double localShiftY = 0;
 
-                // Snapping local mouse coordinates to grid
                 double snappedLocalX = Math.round(localMouseX / GRID_SNAP) * GRID_SNAP;
                 double snappedLocalY = Math.round(localMouseY / GRID_SNAP) * GRID_SNAP;
 
-                // 1. Handle Width and Horizontal origin shift
-                if (scaleHandleIndex == 0 || scaleHandleIndex == 7 || scaleHandleIndex == 6) { // Left-side handles (TL, L, BL)
+                if (scaleHandleIndex == 0 || scaleHandleIndex == 7 || scaleHandleIndex == 6) {
                     newW = Math.max(GRID_SNAP, startW - snappedLocalX);
                     localShiftX = startW - newW;
-                } else if (scaleHandleIndex == 2 || scaleHandleIndex == 3 || scaleHandleIndex == 4) { // Right-side handles (TR, R, BR)
+                } else if (scaleHandleIndex == 2 || scaleHandleIndex == 3 || scaleHandleIndex == 4) {
                     newW = Math.max(GRID_SNAP, snappedLocalX);
                 }
 
-                // 2. Handle Height and Vertical origin shift
-                if (scaleHandleIndex == 0 || scaleHandleIndex == 1 || scaleHandleIndex == 2) { // Top-side handles (TL, T, TR)
+                if (scaleHandleIndex == 0 || scaleHandleIndex == 1 || scaleHandleIndex == 2) {
                     newH = Math.max(GRID_SNAP, startH - snappedLocalY);
                     localShiftY = startH - newH;
-                } else if (scaleHandleIndex == 4 || scaleHandleIndex == 5 || scaleHandleIndex == 6) { // Bottom-side handles (BR, B, BL)
+                } else if (scaleHandleIndex == 4 || scaleHandleIndex == 5 || scaleHandleIndex == 6) {
                     newH = Math.max(GRID_SNAP, snappedLocalY);
                 }
 
-                // 3. Apply local shifts back to World Space X/Y
-                // Since the image is rotated, a "local left" shift must be rotated by the image's angle to find the new world X/Y
                 double worldShiftX = localShiftX * Math.cos(-angle) - localShiftY * Math.sin(-angle);
                 double worldShiftY = localShiftX * Math.sin(-angle) + localShiftY * Math.cos(-angle);
 
@@ -680,29 +625,27 @@ public class QuestScreen extends Screen {
                 selectedCanvasImage.setHeight(newH);
 
             } else if (isDraggingRotateHandle) {
-                // Rotation around the center of the image
+
                 double centerX = selectedCanvasImage.getX() + selectedCanvasImage.getWidth() / 2.0;
                 double centerY = selectedCanvasImage.getY() + selectedCanvasImage.getHeight() / 2.0;
-                
+
                 double currentAngle = Math.atan2(worldMouseY - centerY, worldMouseX - centerX);
 
-                // Normalize to 0-360 steps if desired, otherwise free rotate
-                float finalRotation = (float)(initialImageRotation + (currentAngle - initialRotateAngle));
+                float finalRotation = (float) (initialImageRotation + (currentAngle - initialRotateAngle));
                 selectedCanvasImage.setRotation(finalRotation);
 
             } else if (isDraggingAlphaSlider && currentImageMode == ManipulationMode.ALPHA) {
-                // Transform world mouse into Image-Local Space for alpha (relative to image origin)
+
                 double dx = worldMouseX - selectedCanvasImage.getX();
                 double dy = worldMouseY - selectedCanvasImage.getY();
                 double localX = dx * Math.cos(angle) - dy * Math.sin(angle);
 
-                // FIX: Use a fixed 0.8 scale so dragging matches the visual scale on the grid
                 double relX = worldMouseX - selectedCanvasImage.getX();
                 double btnScale = 0.8;
-                // Buttons are at -25 offset. We translate the coordinate back to the local button space.
+
                 double hitX = (relX + 25) / btnScale;
 
-                float newAlpha = (float)((hitX + 110) / 100.0);
+                float newAlpha = (float) ((hitX + 110) / 100.0);
                 selectedCanvasImage.setAlpha(Math.max(0.05f, Math.min(1.0f, newAlpha)));
             }
         }
@@ -723,22 +666,18 @@ public class QuestScreen extends Screen {
         float deltaTime = (currentTimeMillis - this.lastTimeMillis) / 1000.0f;
         this.lastTimeMillis = currentTimeMillis;
 
-        //Keep the sidebar open if hovering, if the sidebar context menu is open, or if we are editing a name.
-        // FIX: Block expansion via mouse position if a modal window is open
         boolean isModalOpen = isEditorOpen || isTaskEditorOpen || isRewardEditorOpen || isChoiceModalOpen || isRewardSummaryOpen || isSettingsOpen || isItemSubmissionOpen;
-        boolean isHoveringSidebar = (mouseX <= (this.currentSidebarWidth + 2) && !isModalOpen) || 
-                                     isSideBarContextMenu || isSideBarEntryMenu || isSidebarEditing() || isEditingChapterIcon;
+        boolean isHoveringSidebar = (mouseX <= (this.currentSidebarWidth + 2) && !isModalOpen) ||
+                isSideBarContextMenu || isSideBarEntryMenu || isSidebarEditing() || isEditingChapterIcon;
         double targetWidth = isHoveringSidebar ? MAX_SIDEBAR_WIDTH : MIN_SIDEBAR_WIDTH;
 
         float interpolationSpeed = 12.0f;
         this.currentSidebarWidth += (targetWidth - this.currentSidebarWidth) * (1.0 - Math.exp(-interpolationSpeed * deltaTime));
 
-        // --- DIRECT HARDWARE DELTA TRACKING ---
         if (!isLeftButtonDown) {
             this.suppressPanning = false;
         }
 
-// 2. Updated condition: Added !this.suppressPanning
         if (isLeftButtonDown
                 && mouseX > this.currentSidebarWidth
                 && !this.isDraggingPopup
@@ -772,38 +711,31 @@ public class QuestScreen extends Screen {
             this.lastMouseX = currentX;
             this.lastMouseY = currentY;
         } else {
-            // FIX: If we were dragging last frame and just stopped, trigger a local disk save.
-            // This ensures progress is kept even if Minecraft is closed without closing the UI.
+
             if (this.wasDraggingLastFrame && this.selectedChapter != null) {
                 QuestClientData.saveChapterViewState(this.selectedChapter.getId(), this.offsetX, this.offsetY, this.zoom);
             }
             this.wasDraggingLastFrame = false;
         }
 
-        // 2. BEGIN THE MATRIX SCALE PASS
         graphics.pose().pushMatrix();
 
-        // 2. Move the matrix origin to the absolute middle of the screen
         graphics.pose().translation(new Vector2f(absoluteCenterX, absoluteCenterY));
 
-        // 3. Zoom from the center of the screen
         graphics.pose().scale((float) this.zoom, (float) this.zoom);
 
-        // 4. Translate by the local grid coordinates
         graphics.pose().translate(new Vector2f((float) -this.offsetX, (float) -this.offsetY));
 
         drawGrid(graphics);
 
-        // 5. Render your quest tree nodes onto the grid
         renderQuestTree(graphics, mouseX, mouseY, partialTick);
 
-        // --- AUTO-PAGINATION WHILE MOVING TASK ---
         if (this.movingTask != null && this.selectedQuest != null) {
             long now = Util.getMillis();
-            if (now - lastTaskPageFlip > 800) { // 800ms cooldown to prevent rapid flipping
+            if (now - lastTaskPageFlip > 800) {
                 int panelWidth = 300;
-                int px = (this.popupX == -1) ? (this.width - panelWidth) / 2 : (int)this.popupX;
-                int py = (this.popupY == -1) ? (this.height - 200) / 2 : (int)this.popupY;
+                int px = (this.popupX == -1) ? (this.width - panelWidth) / 2 : (int) this.popupX;
+                int py = (this.popupY == -1) ? (this.height - 200) / 2 : (int) this.popupY;
                 int tasksAreaX = px + 10;
                 int tasksAreaY = py + 45;
                 int slotSize = 20;
@@ -813,7 +745,7 @@ public class QuestScreen extends Screen {
                 List<QuestTask> tasks = this.selectedQuest.getTasks();
 
                 if (tasks.size() > maxVisibleTasks) {
-                    // Over Left Boundary?
+
                     if (mouseX >= tasksAreaX && mouseX <= tasksAreaX + 12 &&
                             mouseY >= tasksAreaY && mouseY <= tasksAreaY + slotSize) {
                         if (taskPage > 0) {
@@ -822,7 +754,7 @@ public class QuestScreen extends Screen {
                             playClickSound();
                         }
                     }
-                    // Over Right Boundary?
+
                     int rightTriggerX = tasksAreaX + 12 + (maxVisibleTasks * (slotSize + 4));
                     if (mouseX >= rightTriggerX && mouseX <= rightTriggerX + 12 &&
                             mouseY >= tasksAreaY && mouseY <= tasksAreaY + slotSize) {
@@ -836,7 +768,6 @@ public class QuestScreen extends Screen {
             }
         }
 
-        // --- AUTO-PAGINATION WHILE MOVING REWARD ---
         if (this.movingReward != null && this.selectedQuest != null) {
             long now = Util.getMillis();
             if (now - lastRewardPageFlip > 800) {
@@ -871,11 +802,9 @@ public class QuestScreen extends Screen {
 
         int sidebarW = (int) this.currentSidebarWidth;
 
-        // 1. Draw Sidebar Background Pane
         graphics.fill(0, 0, sidebarW, this.height, COL_SIDEBAR_BG);
         graphics.fill(sidebarW - 1, 0, sidebarW, this.height, COL_SIDEBAR_BORDER);
 
-        // 2. DYNAMIC MINIMIZED ARROW
         if (sidebarW > MIN_SIDEBAR_WIDTH + 2) {
             float textScale = 0.75f;
             double localMouseY = mouseY / textScale;
@@ -889,24 +818,19 @@ public class QuestScreen extends Screen {
             graphics.pose().pushMatrix();
             graphics.pose().scale(textScale, textScale);
 
-            // FIX: Use Math.ceil to ensure logical width fully covers physical pixels (167 instead of 166)
             int scaledMaxSidebarW = (int) Math.ceil(MAX_SIDEBAR_WIDTH / textScale);
             int currentScaledW = (int) Math.ceil(sidebarW / textScale);
 
-            // FIX: Use logical coordinates (currentScaledW) so the scissor matches our 0.75 scale
-            graphics.enableScissor(0, 0, currentScaledW, (int)(this.height / textScale));
+            graphics.enableScissor(0, 0, currentScaledW, (int) (this.height / textScale));
 
-            // Render Settings Button (Gear)
             if (sidebarW > MIN_SIDEBAR_WIDTH + 15) {
                 int gearX = currentScaledW - 15;
                 boolean hoveringGear = localMouseX >= gearX && localMouseX <= gearX + 10 && localMouseY >= 3 && localMouseY <= 13;
                 int gearColor = hoveringGear ? COL_TEXT_GOLD : COL_TEXT;
 
-                // Tint the texture directly using the color integer at the end of the blit call
                 graphics.blit(RenderPipelines.GUI_TEXTURED, QuestEditorUI.SETTINGS_ICON, gearX, 4, 0.0f, 0.0f, 10, 10, 10, 10, gearColor);
             }
 
-            // 1b. Draw the main "+" Add Button at the top right of the sidebar, scaled to match others
             if (QuestGlobalState.isEditModeEnabled && sidebarW > MIN_SIDEBAR_WIDTH + 15) {
                 int plusX = currentScaledW - 30;
                 int plusY = 5;
@@ -915,27 +839,23 @@ public class QuestScreen extends Screen {
                 graphics.text(this.font, Component.literal("+"), plusX, plusY, plusColor);
             }
 
-            // 2. Enable List Scissor: This starts at Y=15 (logical) to protect the header bar
-            // FIX: Convert logical Y (15) to physical pixels so it aligns with the header
-            graphics.enableScissor(0, 15, currentScaledW, (int)(this.height / textScale));
+            graphics.enableScissor(0, 15, currentScaledW, (int) (this.height / textScale));
 
             graphics.pose().pushMatrix();
-            // Translate the grid downwards based on how far we've scrolled
-            graphics.pose().translate(new Vector2f(0f, -(float)sidebarScrollOffset));
 
-            // 3. Sidebar Entry Loop
+            graphics.pose().translate(new Vector2f(0f, -(float) sidebarScrollOffset));
+
             int currentYPosition = (int) (15 / textScale);
             int localX = (int) (6 / textScale);
             int localChapterX = (int) (14 / textScale);
-            int logicalBottom = (int) (this.height / textScale); // Logical height for the PoseStack
-            int headerHeight = (int)(15 / textScale);
+            int logicalBottom = (int) (this.height / textScale);
+            int headerHeight = (int) (15 / textScale);
 
             for (SidebarEntry entry : this.sidebarEntries) {
                 if (entry instanceof SidebarGroup group) {
                     String prefix = group.isExpanded() ? "▼ " : "► ";
                     int solidGroupColor = COL_TEXT;
 
-                    // 1. Calculate Truncation for Group Title
                     int groupPlusSpace = (QuestGlobalState.isEditModeEnabled && group.isExpanded() && group != editingGroup) ? 15 : 0;
                     int maxGroupWidth = currentScaledW - localX - groupPlusSpace;
                     String fullGroupTitle = prefix + group.getTitle();
@@ -945,7 +865,6 @@ public class QuestScreen extends Screen {
                             localMouseY >= headerHeight &&
                             scrollableMouseY >= currentYPosition && scrollableMouseY < currentYPosition + 14;
 
-                    // Suppress tooltip if mouse is within 20 logical pixels of the right edge (where the + button lives)
                     boolean nearGroupPlus = false;
                     if (QuestGlobalState.isEditModeEnabled && group.isExpanded() && group != editingGroup) {
                         nearGroupPlus = localMouseX >= currentScaledW - 20;
@@ -955,8 +874,8 @@ public class QuestScreen extends Screen {
 
                     if (showGroupOverlay) {
                         pendingOverlayText = fullGroupTitle;
-                        pendingOverlayX = (int)(localX * textScale);
-                        pendingOverlayY = (int)((currentYPosition - sidebarScrollOffset) * textScale);
+                        pendingOverlayX = (int) (localX * textScale);
+                        pendingOverlayY = (int) ((currentYPosition - sidebarScrollOffset) * textScale);
                     }
 
                     boolean isGroupMoving = movingSidebarGroup != null;
@@ -966,9 +885,6 @@ public class QuestScreen extends Screen {
                             updateSidebarScrollOffset(editorWidth);
                             String displayText = sidebarSearchQuery;
 
-                            // FIX: Pass logical coordinates. The 0.75 scale will handle the conversion.
-                            // We start at localX - 2 to give the first character anti-aliasing room.
-                            // FIX: Use row-relative Y coordinates so the scissor follows the entry while scrolling
                             graphics.enableScissor(localX - 2, currentYPosition - 2, currentScaledW, currentYPosition + 14);
                             graphics.text(this.font, Component.literal(displayText), localX - sidebarTextScrollOffset, currentYPosition, COL_TEXT);
 
@@ -977,10 +893,10 @@ public class QuestScreen extends Screen {
                                 graphics.fill(cursorX, currentYPosition, cursorX + 1, currentYPosition + 10, COL_TEXT);
                             }
                             graphics.disableScissor();
-                            // graphics.enableScissor(0, 0, currentScaledW, logicalBottom);
+
                         } else {
                             if (isGroupTitleHovered && !isContextMenuOpen && !isGroupMoving && movingSidebarChapter == null && !isEditingChapterIcon) {
-                                // FIX: Anchor highlight to the absolute left (0) and stop 1px before the border
+
                                 graphics.fill(0, currentYPosition - 2, currentScaledW - 1, currentYPosition + 14, COL_HOVER_UI);
                             }
                             graphics.text(this.font, Component.literal(displayedGroupTitle), localX, currentYPosition, solidGroupColor);
@@ -1012,11 +928,10 @@ public class QuestScreen extends Screen {
                             boolean showChapterOverlay = isHovered && !fullChapterName.equals(displayedChapterName) && !isEditorOpen && currentSidebarWidth > (MAX_SIDEBAR_WIDTH - 5);
 
                             if (!isEditingChapterIcon && !showChapterOverlay && (chapter == this.selectedChapter || (isHovered && !isContextMenuOpen && movingSidebarChapter == null))) {
-                                // FIX: Anchor highlight to the absolute left (0) and stop 1px before the border
+
                                 graphics.fill(0, currentYPosition - 2, currentScaledW - 1, currentYPosition + 14, COL_HOVER_UI);
                             }
 
-                            // 1. Render Icon and Claim Badge regardless of editing/overlay state
                             if (hasIcon) {
                                 graphics.item(chapter.getIconStack(), localChapterX, currentYPosition - 1);
                                 if (hasClaimableRewards(chapter.getId())) {
@@ -1026,14 +941,13 @@ public class QuestScreen extends Screen {
 
                             if (showChapterOverlay) {
                                 pendingOverlayText = fullChapterName;
-                                pendingOverlayX = (int)(textXOffset * textScale);
-                                pendingOverlayY = (int)((currentYPosition + 3 - sidebarScrollOffset) * textScale);
+                                pendingOverlayX = (int) (textXOffset * textScale);
+                                pendingOverlayY = (int) ((currentYPosition + 3 - sidebarScrollOffset) * textScale);
                             } else if (chapter == editingChapter) {
                                 int editorWidth = currentScaledW - textXOffset;
                                 updateSidebarScrollOffset(editorWidth);
                                 String displayText = sidebarSearchQuery;
 
-                                // FIX: Use row-relative Y coordinates so the scissor follows the entry while scrolling
                                 graphics.enableScissor(textXOffset - 2, currentYPosition - 2, currentScaledW, currentYPosition + 16);
                                 graphics.text(this.font, Component.literal(displayText), textXOffset - sidebarTextScrollOffset, currentYPosition + 3, COL_TEXT);
 
@@ -1042,7 +956,7 @@ public class QuestScreen extends Screen {
                                     graphics.fill(cursorX, currentYPosition + 3, cursorX + 1, currentYPosition + 13, COL_TEXT);
                                 }
                                 graphics.disableScissor();
-                                // graphics.enableScissor(0, 0, currentScaledW, logicalBottom);
+
                             } else {
                                 graphics.text(this.font, Component.literal(displayedChapterName), textXOffset, currentYPosition + 3, getStateColor(chapter.getState()));
                             }
@@ -1064,7 +978,7 @@ public class QuestScreen extends Screen {
                     boolean showStandaloneOverlay = isHovered && !fullStandaloneName.equals(displayedStandaloneName) && !isEditorOpen && currentSidebarWidth > (MAX_SIDEBAR_WIDTH - 5);
 
                     if (!isEditingChapterIcon && !showStandaloneOverlay && (chapter == this.selectedChapter || (isHovered && !isContextMenuOpen && movingSidebarChapter == null))) {
-                        // FIX: Anchor highlight to the absolute left (0) and stop 1px before the border
+
                         graphics.fill(0, currentYPosition - 2, currentScaledW - 1, currentYPosition + 14, COL_HOVER_UI);
                     }
 
@@ -1077,14 +991,13 @@ public class QuestScreen extends Screen {
 
                     if (showStandaloneOverlay) {
                         pendingOverlayText = fullStandaloneName;
-                        pendingOverlayX = (int)(textXoffset * textScale);
-                        pendingOverlayY = (int)((currentYPosition + 3 - sidebarScrollOffset) * textScale);
+                        pendingOverlayX = (int) (textXoffset * textScale);
+                        pendingOverlayY = (int) ((currentYPosition + 3 - sidebarScrollOffset) * textScale);
                     } else if (chapter == editingChapter) {
                         int editorWidth = currentScaledW - textXoffset;
                         updateSidebarScrollOffset(editorWidth);
                         String displayText = sidebarSearchQuery;
 
-                        // FIX: Use row-relative Y coordinates so the scissor follows the entry while scrolling
                         graphics.enableScissor(textXoffset - 2, currentYPosition - 2, currentScaledW, currentYPosition + 16);
                         graphics.text(this.font, Component.literal(displayText), textXoffset - sidebarTextScrollOffset, currentYPosition + 3, COL_TEXT);
 
@@ -1093,7 +1006,7 @@ public class QuestScreen extends Screen {
                             graphics.fill(cursorX, currentYPosition + 3, cursorX + 1, currentYPosition + 13, COL_TEXT);
                         }
                         graphics.disableScissor();
-                        // graphics.enableScissor(0, 0, currentScaledW, logicalBottom);
+
                     } else {
                         graphics.text(this.font, Component.literal(displayedStandaloneName), textXoffset, currentYPosition + 3, getStateColor(chapter.getState()));
                     }
@@ -1102,7 +1015,6 @@ public class QuestScreen extends Screen {
                 currentYPosition += 6;
             }
 
-            // --- GHOST INSERTION LINE ---
             if (this.movingSidebarChapter != null) {
                 int tempY = (int) (15 / textScale);
                 int snappedY = -1;
@@ -1110,7 +1022,6 @@ public class QuestScreen extends Screen {
                 for (SidebarEntry entry : this.sidebarEntries) {
                     if (entry == movingSidebarChapter) continue;
 
-                    // Check if mouse is in the gap above this root entry
                     if (scrollableMouseY < tempY + 4) {
                         snappedY = tempY - 3;
                         break;
@@ -1119,7 +1030,7 @@ public class QuestScreen extends Screen {
                     if (entry instanceof SidebarGroup group) {
                         tempY += 18;
                         if (group.isExpanded()) {
-                            // Allow dropping into an empty expanded group
+
                             if (group.getChapters().isEmpty()) {
                                 if (scrollableMouseY < tempY + 16) {
                                     snappedY = tempY - 3;
@@ -1129,9 +1040,8 @@ public class QuestScreen extends Screen {
                             for (SidebarChapter chapter : group.getChapters()) {
                                 if (chapter == movingSidebarChapter) continue;
 
-                                // If mouse is over this chapter row
                                 if (scrollableMouseY < tempY + 16) {
-                                    // Top half = before, Bottom half = after
+
                                     snappedY = (scrollableMouseY < tempY + 8) ? tempY - 3 : tempY + 16 - 3;
                                     break;
                                 }
@@ -1139,7 +1049,7 @@ public class QuestScreen extends Screen {
                             }
                         }
                     } else {
-                        // Standalone chapter root check
+
                         if (scrollableMouseY < tempY + 16) {
                             snappedY = (scrollableMouseY < tempY + 8) ? tempY - 3 : tempY + 16 - 3;
                         } else {
@@ -1151,15 +1061,11 @@ public class QuestScreen extends Screen {
                     tempY += 6;
                 }
 
-                // If no insertion point found yet, it defaults to the very bottom of the list
                 if (snappedY == -1) snappedY = tempY - 3;
 
-                // Draw a 1-pixel high white line across the sidebar width
-                // FIX: Match the highlight width logic to prevent line bleed
                 graphics.fill(0, snappedY, currentScaledW - 1, snappedY + 1, COL_UI_BORDER);
             }
 
-            // --- GROUP GHOST INSERTION LINE ---
             if (this.movingSidebarGroup != null) {
                 int tempY = (int) (15 / textScale);
                 int snappedY = -1;
@@ -1167,7 +1073,6 @@ public class QuestScreen extends Screen {
                 for (SidebarEntry entry : this.sidebarEntries) {
                     if (entry == movingSidebarGroup) continue;
 
-                    // Groups can only be root entries, so we only check gaps between root items
                     if (scrollableMouseY < tempY + 4) {
                         snappedY = tempY - 3;
                         break;
@@ -1176,7 +1081,7 @@ public class QuestScreen extends Screen {
                     if (entry instanceof SidebarGroup group) {
                         tempY += 18;
                         if (group.isExpanded()) {
-                            // If moving a group, we skip over its internal chapters
+
                             tempY += group.getChapters().size() * 16;
                         }
                     } else {
@@ -1187,17 +1092,13 @@ public class QuestScreen extends Screen {
                     tempY += 6;
                 }
 
-                // Default to bottom
                 if (snappedY == -1) snappedY = tempY - 3;
 
-                // Draw a 1-pixel high white line across the sidebar width
-                // FIX: Match the highlight width logic to prevent line bleed
                 graphics.fill(0, snappedY, currentScaledW - 1, snappedY + 1, COL_UI_BORDER);
             }
 
             this.totalSidebarContentHeight = currentYPosition;
 
-            // FIX: Keep scroll within valid bounds and handle auto-scroll to bottom
             int visibleHeight = (int) (this.height / textScale) - 20;
             int maxScroll = Math.max(0, this.totalSidebarContentHeight - visibleHeight);
             if (this.needsSidebarScrollToBottom) {
@@ -1208,18 +1109,14 @@ public class QuestScreen extends Screen {
 
             graphics.pose().popMatrix();
             graphics.pose().popMatrix();
-            graphics.disableScissor(); // Clears the List (Header protection) scissor
-            graphics.disableScissor(); // Clears the Sidebar (Width restriction) scissor
+            graphics.disableScissor();
+            graphics.disableScissor();
 
-            // Final Pass: Draw the expansion overlay on top of everything and escaping the sidebar scissor
             if (pendingOverlayText != null) {
                 renderStaticTextOverlay(graphics, pendingOverlayText, pendingOverlayX, pendingOverlayY, this.width);
             }
         }
 
-        // --- UI OVERLAY RENDERING (Z-ORDER) ---
-
-        // 1. Main Editor Window
         if (this.isEditorOpen) {
             int windowWidth = 300;
             int windowHeight = 250;
@@ -1234,12 +1131,10 @@ public class QuestScreen extends Screen {
             }
         }
 
-        // 2. Quest Details Popup
         if (this.selectedQuest != null && !this.isEditorOpen) {
             renderQuestDetails(graphics, mouseX, mouseY);
         }
 
-        // 6. Task Editor Window (Rendered last to be on top)
         if (this.isTaskEditorOpen && this.taskToModify != null) {
             int windowWidth = 300;
             int windowHeight = 250;
@@ -1252,7 +1147,6 @@ public class QuestScreen extends Screen {
             this.editorUI.renderTaskEditor(graphics, mouseX, mouseY, windowX, windowY, 300, 250, this.taskToModify, this.selectedQuest, this.tempUseAsIcon);
         }
 
-        // 6b. Reward Editor Window
         if (this.isRewardEditorOpen && this.rewardToModify != null) {
             int windowW = 300, windowH = 200;
             int windowX = (this.width - windowW) / 2;
@@ -1266,19 +1160,14 @@ public class QuestScreen extends Screen {
             renderCanvasTextEditor(graphics, mouseX, mouseY);
         }
 
-        // 6.5 Settings Modal
         if (this.isSettingsOpen) {
             renderSettingsModal(graphics, mouseX, mouseY);
         }
 
-        // 7. Item Submission Modal (Top level)
         if (this.isItemSubmissionOpen && this.submittingTask != null) {
             renderItemSubmissionModal(graphics, mouseX, mouseY);
         }
 
-        // --- TOP-LEVEL OVERLAYS (Must render last to ensure they are on top of all windows) ---
-
-        // 8. Icon Picker
         if (editorUI.isIconPickerOpen) {
             int ph = (this.isRewardEditorOpen) ? 200 : 250;
             int panelX = isEditingChapterIcon ? (int) currentSidebarWidth - 300 : (this.width - 300) / 2;
@@ -1328,7 +1217,6 @@ public class QuestScreen extends Screen {
             });
         }
 
-        // 8.5 Claim All Button (Renders in top-right corner if rewards are pending)
         if (hasAnyClaimableRewards() && !isEditorOpen && !isTaskEditorOpen && !isRewardEditorOpen && !isTextEditorOpen && !isSettingsOpen && !isItemSubmissionOpen) {
             int btnSize = 16;
             int btnX = this.width - btnSize - 5;
@@ -1336,10 +1224,8 @@ public class QuestScreen extends Screen {
             hoveringClaimAll = mouseX >= btnX && mouseX <= btnX + btnSize && mouseY >= btnY && mouseY <= btnY + btnSize;
             int color = hoveringClaimAll ? COL_TEXT_GOLD : 0xFFFFFFFF;
 
-            // Draw the Claim All Icon
             graphics.blit(RenderPipelines.GUI_TEXTURED, QuestEditorUI.CLAIM_ALL_ICON, btnX, btnY, 0.0f, 0.0f, btnSize, btnSize, btnSize, btnSize, color);
-            
-            // Red ! badge at the top-right corner of the icon
+
             graphics.blit(RenderPipelines.GUI_TEXTURED, QuestEditorUI.CLAIM_ICON, btnX + btnSize - 7, btnY - 1, 0.0f, 0.0f, 8, 8, 8, 8);
         }
 
@@ -1351,35 +1237,31 @@ public class QuestScreen extends Screen {
             renderRewardChoiceModal(graphics, mouseX, mouseY);
         }
 
-        // 9. Context Menu
         if (isContextMenuOpen) {
             renderContextMenu(graphics);
         }
 
-        // 10. Quest Tooltips
         if (this.selectedChapter != null && mouseX > this.currentSidebarWidth) {
             Quest hoveredQuest = null;
             for (Quest quest : this.allQuests) {
-                // FIX: Allow hoveredQuest to be found even if input is blocked, so lock tooltips still show
+
                 if (quest.getChapterName().equals(this.selectedChapter.getId()) && isMouseOverNode(mouseX, mouseY, quest)) {
                     hoveredQuest = quest;
                     break;
                 }
             }
-            // FIX: Hide tooltips if input is blocked by a window or picker
+
             if (hoveredQuest != null && !isInputBlocked() && this.selectedQuest == null && !editorUI.isPickerOpen()) {
                 String tooltipText = "";
 
-                // FIX: Priority Chain. Lock message must come first.
                 if (!hoveredQuest.getLockedBy().isEmpty()) {
                     tooltipText = "§cLocked for editing by: " + hoveredQuest.getLockedBy();
                 } else if (isInputBlocked()) {
-                    return; // Don't show path tooltips behind editors
+                    return;
                 } else {
                     tooltipText = hoveredQuest.getTitle();
                     Map<Identifier, QuestChapter> chapterMap = SimplyQuestsClientPacketHandler.getChapters();
 
-                    // Look up the actual Chapter data using the sanitized ID
                     Identifier chId = Identifier.fromNamespaceAndPath("simplyquests", Quest.sanitizePath(hoveredQuest.getChapterName()));
 
                     QuestChapter chapter = chapterMap.get(chId);
@@ -1402,17 +1284,12 @@ public class QuestScreen extends Screen {
             }
         }
 
-        // --- PERMANENT SUBTLE COORDINATE DISPLAY ---
-        // FIX: Instead of checking isInputBlocked(), we explicitly check for modal editors.
-        // This allows the HUD to stay visible while dragging nodes, images, or text.
-        // Permanent Subtle Coordinate Display (Updated with Ghost Tracking)
-        if (!isModalOpen && !editorUI.isPickerOpen() && mouseX > (int)this.currentSidebarWidth) {
+        if (!isModalOpen && !editorUI.isPickerOpen() && mouseX > (int) this.currentSidebarWidth) {
             double worldMouseX = this.offsetX + ((mouseX - absoluteCenterX) / this.zoom);
             double worldMouseY = this.offsetY + ((mouseY - absoluteCenterY) / this.zoom);
 
             double displayX, displayY;
 
-            // If moving an object, show the snapped coordinates of the ghost element rather than the raw cursor
             if (movingQuest != null) {
                 displayX = Math.round(worldMouseX / GRID_SNAP) * GRID_SNAP;
                 displayY = Math.round(worldMouseY / GRID_SNAP) * GRID_SNAP;
@@ -1426,14 +1303,14 @@ public class QuestScreen extends Screen {
 
             double unitX = displayX / GRID_SNAP;
             double unitY = -displayY / GRID_SNAP;
-            // FIX: Prevent negative zero (-0.0) from appearing when exactly on the Y axis
+
             if (unitY == 0.0) unitY = 0.0;
 
             String coords = String.format("§7[ %.1f, %.1f ]", unitX, unitY);
-            float subScale = 0.7f; // Smaller text
+            float subScale = 0.7f;
 
             graphics.pose().pushMatrix();
-            // Position in the bottom right corner with a small 5px margin
+
             graphics.pose().translate(this.width - (font.width(coords) * subScale) - 5, this.height - (font.lineHeight * subScale) - 5);
             graphics.pose().scale(subScale, subScale);
             graphics.text(font, coords, 0, 0, 0x88FFFFFF, false);
@@ -1486,8 +1363,9 @@ public class QuestScreen extends Screen {
             graphics.pose().popMatrix();
 
             if (mouseX >= ix && mouseX <= ix + 20 && mouseY >= iy && mouseY <= iy + 20) {
-                hoveredLabel = switch(reward.getType()) {
-                    case ITEM -> reward.getCount() + "x " + reward.getItem().getDefaultInstance().getHoverName().getString();
+                hoveredLabel = switch (reward.getType()) {
+                    case ITEM ->
+                            reward.getCount() + "x " + reward.getItem().getDefaultInstance().getHoverName().getString();
                     case XP -> reward.getCount() + " XP";
                     case COMMAND -> "Execute Command";
                 };
@@ -1498,8 +1376,10 @@ public class QuestScreen extends Screen {
             String pageText = (summaryPage + 1) + " / " + ((rewardsToShow.size() + itemsPerPage - 1) / itemsPerPage);
             graphics.centeredText(font, Component.literal(pageText), x + panelW / 2, y + panelH - 40, COL_TEXT);
 
-            if (summaryPage > 0) graphics.text(font, "<", x + 15, y + panelH - 40, mouseX >= x + 15 && mouseX <= x + 25 && mouseY >= y + panelH - 42 && mouseY <= y + panelH - 32 ? COL_TEXT_GOLD : COL_TEXT);
-            if ((summaryPage + 1) * itemsPerPage < rewardsToShow.size()) graphics.text(font, ">", x + panelW - 25, y + panelH - 40, mouseX >= x + panelW - 25 && mouseX <= x + panelW - 15 && mouseY >= y + panelH - 42 && mouseY <= y + panelH - 32 ? COL_TEXT_GOLD : COL_TEXT);
+            if (summaryPage > 0)
+                graphics.text(font, "<", x + 15, y + panelH - 40, mouseX >= x + 15 && mouseX <= x + 25 && mouseY >= y + panelH - 42 && mouseY <= y + panelH - 32 ? COL_TEXT_GOLD : COL_TEXT);
+            if ((summaryPage + 1) * itemsPerPage < rewardsToShow.size())
+                graphics.text(font, ">", x + panelW - 25, y + panelH - 40, mouseX >= x + panelW - 25 && mouseX <= x + panelW - 15 && mouseY >= y + panelH - 42 && mouseY <= y + panelH - 32 ? COL_TEXT_GOLD : COL_TEXT);
         }
 
         int btnW = 60;
@@ -1508,7 +1388,6 @@ public class QuestScreen extends Screen {
         int btnY = y + panelH - 22;
         editorUI.drawButton(graphics, mouseX, mouseY, btnX, btnY, btnW, btnH, "Confirm", COL_BUTTON_BASE);
 
-        // Final Pass: Render the tooltip last so it stays on top of all icons and buttons
         if (hoveredLabel != null) {
             renderSimpleTooltip(graphics, hoveredLabel, mouseX, mouseY);
         }
@@ -1545,7 +1424,7 @@ public class QuestScreen extends Screen {
 
             editorUI.drawRewardIcon(graphics, reward, outerColor, innerColor, ix, iy, 20, false);
             renderRewardLabel(graphics, reward, ix, iy, 20);
-            
+
             if (isHovered) {
                 hoveredLabel = getRewardTooltip(reward);
             }
@@ -1555,10 +1434,8 @@ public class QuestScreen extends Screen {
         int btnH = 14;
         int btnY = y + panelH - 22;
 
-        // Cancel Button
         editorUI.drawButton(graphics, mouseX, mouseY, x + 15, btnY, btnW, btnH, "Cancel", COL_BUTTON_BASE);
 
-        // Submit Button (Only active if a choice is selected)
         int submitColor = (selectedChoice != null) ? COL_BUTTON_BASE : COL_STATE_LOCKED;
         editorUI.drawButton(graphics, mouseX, mouseY, x + panelW - 15 - btnW, btnY, btnW, btnH, "Submit", submitColor);
 
@@ -1573,7 +1450,6 @@ public class QuestScreen extends Screen {
         int x = (this.width - panelW) / 2, y = (this.height - panelH) / 2;
         int btnY = y + panelH - 22;
 
-        // 1. Grid Interaction
         List<QuestReward> choices = new ArrayList<>();
         choices.add(activeChoiceBundle);
         choices.addAll(activeChoiceBundle.getSubRewards());
@@ -1583,15 +1459,16 @@ public class QuestScreen extends Screen {
             int iy = gridY + (i / 5) * 32;
             if (mouseX >= ix && mouseX <= ix + 20 && mouseY >= iy && mouseY <= iy + 20) {
                 selectedChoice = choices.get(i);
-                playClickSound(); return;
+                playClickSound();
+                return;
             }
         }
 
-        // 2. Buttons
         if (mouseX >= x + 15 && mouseX <= x + 15 + 50 && mouseY >= btnY && mouseY <= btnY + 14) {
-            isChoiceModalOpen = false; playClickSound();
+            isChoiceModalOpen = false;
+            playClickSound();
         } else if (selectedChoice != null && mouseX >= x + panelW - 65 && mouseX <= x + panelW - 15 && mouseY >= btnY && mouseY <= btnY + 14) {
-            // Send the specific sub-reward ID to the server
+
             ClientPacketDistributor.sendToServer(new ClaimRewardPayload(selectedChoice.getId()));
             isChoiceModalOpen = false;
             playClickSound();
@@ -1601,17 +1478,11 @@ public class QuestScreen extends Screen {
     private void renderQuestTree(GuiGraphicsExtractor graphics, int mouseX, int mouseY, float partialTick) {
         if (this.selectedChapter == null) return;
 
-        // 0. Calculate GLOBAL animation phase for high-precision smoothness
-        // We do this at the top so it is accessible to all rendering passes
-        // FIX: Switch to System Millis to decouple from game tick lag, which causes occasional hitches.
-        // Multiplying by 0.01f maintains a smooth speed of 10 pixels per second.
         float globalArrowPhase = (Util.getMillis() % 1000000) * 0.01f % 8.0f;
 
-        // PASS 0: BLOCK RENDERING IF EDITOR OPEN
         String activeChapterId = this.selectedChapter.getId();
         if (activeChapterId == null) return;
 
-        // 1. Calculate World Space Mouse and Shadow/Ghost coordinates
         float absoluteCenterX = (float) (this.width / 2.0);
         float absoluteCenterY = (float) (this.height / 2.0);
         double worldMouseX = this.offsetX + ((mouseX - absoluteCenterX) / this.zoom);
@@ -1636,9 +1507,6 @@ public class QuestScreen extends Screen {
             }
         }
 
-        // =========================================================================
-        // PASS 1: DRAW CANVAS IMAGES (Background)
-        // =========================================================================
         for (QuestCanvasImage ci : this.allCanvasImages) {
             if (!ci.getChapterName().equals(activeChapterId)) continue;
 
@@ -1647,32 +1515,28 @@ public class QuestScreen extends Screen {
 
             float halfW = (float) ci.getWidth() / 2f;
             float halfH = (float) ci.getHeight() / 2f;
-            
-            // Dim the original stationary image while it is being moved
+
             float alphaMod = (ci == this.movingCanvasImage) ? 0.3f : 1.0f;
 
             graphics.pose().pushMatrix();
-            // 1. Move origin to image center
-            graphics.pose().translate((float)ci.getX() + halfW, (float)ci.getY() + halfH);
-            // 2. Rotate around center
+
+            graphics.pose().translate((float) ci.getX() + halfW, (float) ci.getY() + halfH);
+
             graphics.pose().rotate(ci.getRotation());
-            // 3. Move origin back to top-left for drawing
+
             graphics.pose().translate(-halfW, -halfH);
 
-            // FIX: Use only ONE blit call with the alpha tint (multiplied by ghost status).
-            int alphaTint = ((int)(ci.getAlpha() * 255 * alphaMod) << 24) | 0xFFFFFF;
-            graphics.blit(RenderPipelines.GUI_TEXTURED, tex, 0, 0, 0f, 0f, (int)ci.getWidth(), (int)ci.getHeight(), (int)ci.getWidth(), (int)ci.getHeight(), alphaTint);
+            int alphaTint = ((int) (ci.getAlpha() * 255 * alphaMod) << 24) | 0xFFFFFF;
+            graphics.blit(RenderPipelines.GUI_TEXTURED, tex, 0, 0, 0f, 0f, (int) ci.getWidth(), (int) ci.getHeight(), (int) ci.getWidth(), (int) ci.getHeight(), alphaTint);
 
-            // --- SELECTION UI: TRANSFORM BOX (Must be inside rotation matrix) ---
             if (ci == selectedCanvasImage) {
-                // Draw basic selection outline slightly outside the image
-                graphics.outline(-1, -1, (int)ci.getWidth() + 2, (int)ci.getHeight() + 2, COL_TEXT_GOLD);
 
-                int s = 6; // Handle thickness
-                int w = (int)ci.getWidth();
-                int h = (int)ci.getHeight();
+                graphics.outline(-1, -1, (int) ci.getWidth() + 2, (int) ci.getHeight() + 2, COL_TEXT_GOLD);
 
-                // Hit detection for handle highlighting (Local Space)
+                int s = 6;
+                int w = (int) ci.getWidth();
+                int h = (int) ci.getHeight();
+
                 double dx = worldMouseX - (ci.getX() + ci.getWidth() / 2.0);
                 double dy = worldMouseY - (ci.getY() + ci.getHeight() / 2.0);
                 double angle = -ci.getRotation();
@@ -1681,58 +1545,57 @@ public class QuestScreen extends Screen {
 
                 if (currentImageMode == ManipulationMode.SCALE) {
                     int[][] hBoxes = {
-                            {-s, -s, s, s},   // 0: TL Square
-                            {0, -s, w, s},    // 1: Top Bar
-                            {w, -s, s, s},    // 2: TR Square
-                            {w, 0, s, h},     // 3: Right Bar
-                            {w, h, s, s},     // 4: BR Square
-                            {0, h, w, s},     // 5: Bottom Bar
-                            {-s, h, s, s},    // 6: BL Square
-                            {-s, 0, s, h}     // 7: Left Bar
+                            {-s, -s, s, s},
+                            {0, -s, w, s},
+                            {w, -s, s, s},
+                            {w, 0, s, h},
+                            {w, h, s, s},
+                            {0, h, w, s},
+                            {-s, h, s, s},
+                            {-s, 0, s, h}
                     };
 
                     for (int i = 0; i < hBoxes.length; i++) {
                         int[] b = hBoxes[i];
-                        // Check if mouse is over this handle box (with 1px buffer)
+
                         boolean isHovered = localMouseX >= b[0] - 1 && localMouseX <= b[0] + b[2] + 1 &&
-                                           localMouseY >= b[1] - 1 && localMouseY <= b[1] + b[3] + 1;
+                                localMouseY >= b[1] - 1 && localMouseY <= b[1] + b[3] + 1;
                         boolean isActive = isHovered || (i == scaleHandleIndex);
-                        
+
                         int color = isActive ? COL_TEXT_GOLD : COL_UI_BORDER;
                         graphics.outline(b[0], b[1], b[2], b[3], color);
                     }
                 } else if (currentImageMode == ManipulationMode.ROTATE) {
                     int handleSize = 8;
-                    // Position rotation handles outside corners for consistency
+
                     int[][] hBoxes = {
-                            {-handleSize, -handleSize, handleSize, handleSize}, // TL
-                            {w, -handleSize, handleSize, handleSize},           // TR
-                            {w, h, handleSize, handleSize},                     // BR
-                            {-handleSize, h, handleSize, handleSize}            // BL
+                            {-handleSize, -handleSize, handleSize, handleSize},
+                            {w, -handleSize, handleSize, handleSize},
+                            {w, h, handleSize, handleSize},
+                            {-handleSize, h, handleSize, handleSize}
                     };
 
                     for (int i = 0; i < hBoxes.length; i++) {
                         int[] b = hBoxes[i];
                         boolean isHovered = localMouseX >= b[0] - 1 && localMouseX <= b[0] + b[2] + 1 &&
-                                           localMouseY >= b[1] - 1 && localMouseY <= b[1] + b[3] + 1;
+                                localMouseY >= b[1] - 1 && localMouseY <= b[1] + b[3] + 1;
                         boolean isActive = isHovered || isDraggingRotateHandle;
-                        
+
                         int color = isActive ? COL_TEXT_GOLD : COL_UI_BORDER;
                         graphics.outline(b[0], b[1], b[2], b[3], color);
                     }
                 }
             }
-            graphics.pose().popMatrix(); // End Image Rotation Matrix
+            graphics.pose().popMatrix();
 
-            // --- SELECTION UI: BUTTONS (Must be OUTSIDE rotation matrix so they don't orbit) ---
             if (ci == selectedCanvasImage) {
                 graphics.pose().pushMatrix();
-                graphics.pose().translate((float)ci.getX(), (float)ci.getY());
+                graphics.pose().translate((float) ci.getX(), (float) ci.getY());
 
                 graphics.pose().pushMatrix();
-                graphics.pose().translate(-25, 0); // Position buttons to the left of the image origin
-                graphics.pose().scale(0.8f, 0.8f); // Buttons now scale with zoom (canvas standard)
-                
+                graphics.pose().translate(-25, 0);
+                graphics.pose().scale(0.8f, 0.8f);
+
                 renderManipulationButton(graphics, 0, 0, QuestEditorUI.SCALE_ICON, currentImageMode == ManipulationMode.SCALE);
                 renderManipulationButton(graphics, 0, 20, QuestEditorUI.ROTATE_ICON, currentImageMode == ManipulationMode.ROTATE);
                 renderManipulationButton(graphics, 0, 40, QuestEditorUI.ALPHA_ICON, currentImageMode == ManipulationMode.ALPHA);
@@ -1745,28 +1608,21 @@ public class QuestScreen extends Screen {
             }
         }
 
-        // =========================================================================
-        // PASS 2: DRAW CANVAS TEXT
-        // =========================================================================
         for (CanvasText ct : this.allCanvasTexts) {
             if (!ct.getChapterName().equals(activeChapterId)) continue;
-            
-            // Dim the original text while it is being moved
+
             float alphaMod = (ct == this.movingCanvasText) ? 0.3f : 1.0f;
 
             graphics.pose().pushMatrix();
-            graphics.pose().translate((float)ct.getX(), (float)ct.getY());
+            graphics.pose().translate((float) ct.getX(), (float) ct.getY());
             graphics.pose().scale(ct.getScale(), ct.getScale());
 
-            int color = (ct.getColor() & 0x00FFFFFF) | ((int)(((ct.getColor() >> 24) & 0xFF) * alphaMod) << 24);
+            int color = (ct.getColor() & 0x00FFFFFF) | ((int) (((ct.getColor() >> 24) & 0xFF) * alphaMod) << 24);
             graphics.text(this.font, Component.literal(ct.getText()), 0, 0, color);
 
             graphics.pose().popMatrix();
         }
 
-        // =========================================================================
-        // PASS 3: DRAW THE LINES (Layered on top of decorations)
-        // =========================================================================
         for (Quest quest : this.allQuests) {
 
             if (!quest.getChapterName().equals(activeChapterId)) continue;
@@ -1775,22 +1631,18 @@ public class QuestScreen extends Screen {
                 Quest dependency = this.questLookup.get(depId);
 
                 if (dependency != null && dependency.getChapterName().equals(activeChapterId)) {
-                    // FIX: Calculate midpoints using the quest's dynamic float size
+
                     float startX = (dependency == this.movingQuest ? ghostX : (float) dependency.getX()) + (dependency.getSize() / 2.0f);
                     float startY = (dependency == this.movingQuest ? ghostY : (float) dependency.getY()) + (dependency.getSize() / 2.0f);
                     float endX = (quest == this.movingQuest ? ghostX : (float) quest.getX()) + (quest.getSize() / 2.0f);
                     float endY = (quest == this.movingQuest ? ghostY : (float) quest.getY()) + (quest.getSize() / 2.0f);
 
-                    // FANCY: Blend colors between parent and child quest states
                     int parentColor = getStateColor(dependency.getState());
                     int childColor = getStateColor(quest.getState());
 
-                    // Use a proportional inset (25% of size) instead of a fixed 3px.
-                    // This ensures that lines always connect and tuck behind borders even on massive nodes.
                     float r1 = dependency.getSize() * 0.25f;
                     float r2 = quest.getSize() * 0.25f;
 
-                    // Calculate scroll phase based on the global high-precision timer
                     float arrowPhase = 0;
                     boolean inputBlocked = isInputBlocked();
                     boolean isParentHovered = !inputBlocked && isMouseOverNode(mouseX, mouseY, dependency);
@@ -1799,17 +1651,12 @@ public class QuestScreen extends Screen {
                     if (isParentHovered || isChildHovered || dependency == this.movingQuest || quest == this.movingQuest) {
                         arrowPhase = globalArrowPhase;
                     }
-                    
-                    // Increased thickness to 4.0f to provide enough resolution for the arrow shape
-                    // and prevents it from appearing as a single blurry pixel.
+
                     drawVectorLine(graphics, startX, startY, endX, endY, 4.0f, parentColor, childColor, r1, r2, arrowPhase);
                 }
             }
         }
 
-        // =========================================================================
-        // PASS 4: DRAW THE NODES (Layered cleanly on top of lines)
-        // =========================================================================
         for (Quest quest : this.allQuests) {
 
             if (!quest.getChapterName().equals(activeChapterId)) continue;
@@ -1823,27 +1670,20 @@ public class QuestScreen extends Screen {
 
             int stateColor = getStateColor(quest.getState());
 
-            // Pass isHovered down to the drawing helper
             drawQuestNode(graphics, x, y, size, isSelected, isHovered, stateColor, quest);
 
-            // FIX: Use the centralized helper with grid coordinates and full size.
-            // This avoids coordinate mismatches that were causing 3D entities to be scissored out.
             editorUI.drawQuestIcon(graphics, quest, x, y, size);
 
-            // PASS 2b: DRAW CLAIM NOTIFICATION BADGE
-            // Only show if the quest is completed and has at least one unclaimed reward
             boolean canClaimAny = quest.getState() == QuestState.COMPLETED &&
                     !quest.getRewards().isEmpty() &&
                     quest.getRewards().stream().anyMatch(r -> !SimplyQuestsClientPacketHandler.CLIENT_CLAIMED_REWARDS.contains(r.getId()));
 
             if (canClaimAny) {
-                // Position badge at the top-right corner of the node
-                int badgeSize = Math.max(6, (int)(size * 0.35f));
+
+                int badgeSize = Math.max(6, (int) (size * 0.35f));
                 int bx = x + size - (badgeSize / 2) - 2;
                 int by = y - (badgeSize / 2) + 2;
 
-                // FIX: Use matrix scaling to prevent the "top-left crop" error.
-                // We sample exactly 8x8 from the texture and scale it to badgeSize.
                 graphics.pose().pushMatrix();
                 graphics.pose().translate(bx, by);
                 float badgeScale = badgeSize / 8.0f;
@@ -1853,12 +1693,10 @@ public class QuestScreen extends Screen {
             }
         }
 
-        // PASS 5: RENDER GHOST NODE (Shared scope with ghostX/ghostY)
         if (this.movingQuest != null) {
-            QuestShapeRenderer.render(this.movingQuest.getShape(), graphics, (int)ghostX, (int)ghostY, (int)this.movingQuest.getSize(), COL_GHOST_BORDER, COL_GHOST_FILL);
+            QuestShapeRenderer.render(this.movingQuest.getShape(), graphics, (int) ghostX, (int) ghostY, (int) this.movingQuest.getSize(), COL_GHOST_BORDER, COL_GHOST_FILL);
         }
 
-        // PASS 6: RENDER GHOST IMAGE
         if (this.movingCanvasImage != null) {
             Identifier tex = getOrRequestImage(this.movingCanvasImage.getImageId());
             if (tex != null) {
@@ -1869,22 +1707,20 @@ public class QuestScreen extends Screen {
                 graphics.pose().rotate(this.movingCanvasImage.getRotation());
                 graphics.pose().translate(-halfW, -halfH);
 
-                // Semi-transparent ghost color (50% of current image alpha)
-                int ghostAlpha = (int)(this.movingCanvasImage.getAlpha() * 255 * 0.5f);
+                int ghostAlpha = (int) (this.movingCanvasImage.getAlpha() * 255 * 0.5f);
                 int alphaTint = (ghostAlpha << 24) | 0xFFFFFF;
-                graphics.blit(RenderPipelines.GUI_TEXTURED, tex, 0, 0, 0f, 0f, 
-                        (int)this.movingCanvasImage.getWidth(), (int)this.movingCanvasImage.getHeight(), 
-                        (int)this.movingCanvasImage.getWidth(), (int)this.movingCanvasImage.getHeight(), alphaTint);
+                graphics.blit(RenderPipelines.GUI_TEXTURED, tex, 0, 0, 0f, 0f,
+                        (int) this.movingCanvasImage.getWidth(), (int) this.movingCanvasImage.getHeight(),
+                        (int) this.movingCanvasImage.getWidth(), (int) this.movingCanvasImage.getHeight(), alphaTint);
                 graphics.pose().popMatrix();
             }
         }
 
-        // PASS 7: RENDER GHOST TEXT
         if (this.movingCanvasText != null) {
             graphics.pose().pushMatrix();
             graphics.pose().translate(textGhostX, textGhostY);
             graphics.pose().scale(this.movingCanvasText.getScale(), this.movingCanvasText.getScale());
-            // Use semi-transparent version of current color
+
             int ghostColor = (this.movingCanvasText.getColor() & 0x00FFFFFF) | 0x80000000;
             graphics.text(this.font, Component.literal(this.movingCanvasText.getText()), 0, 0, ghostColor);
             graphics.pose().popMatrix();
@@ -1894,37 +1730,35 @@ public class QuestScreen extends Screen {
     public boolean handleImageInteraction(double mouseX, double mouseY, int button) {
         if (selectedCanvasImage == null || (button != 0 && button != 1)) return false;
 
-        // 1. Convert mouse to World Space
         float absoluteCenterX = (float) (this.width / 2.0f);
         float absoluteCenterY = (float) (this.height / 2.0);
         double worldMouseX = this.offsetX + ((mouseX - absoluteCenterX) / this.zoom);
         double worldMouseY = this.offsetY + ((mouseY - absoluteCenterY) / this.zoom);
 
-        // 2. Tool Toggle Check (Buttons at -25 relative to image origin)
         double relX = worldMouseX - selectedCanvasImage.getX();
         double relY = worldMouseY - selectedCanvasImage.getY();
         double btnScale = 0.8;
         double hitX = (relX + 25) / btnScale;
         double hitY = relY / btnScale;
 
-        // S Button
         if (hitX >= 0 && hitX <= 15 && hitY >= 0 && hitY <= 15) {
             currentImageMode = (currentImageMode == ManipulationMode.SCALE) ? ManipulationMode.NONE : ManipulationMode.SCALE;
-            playClickSound(); return true;
-        }
-        // R Button
-        if (hitX >= 0 && hitX <= 15 && hitY >= 20 && hitY <= 35) {
-            currentImageMode = (currentImageMode == ManipulationMode.ROTATE) ? ManipulationMode.NONE : ManipulationMode.ROTATE;
-            playClickSound(); return true;
-        }
-        // A Button
-        if (hitX >= 0 && hitX <= 15 && hitY >= 40 && hitY <= 55) {
-            currentImageMode = (currentImageMode == ManipulationMode.ALPHA) ? ManipulationMode.NONE : ManipulationMode.ALPHA;
-            playClickSound(); return true;
+            playClickSound();
+            return true;
         }
 
-        // 3. Mode-Specific Interaction (Handles/Sliders)
-        // FIX: Transform world mouse into Image-Local Space relative to the CENTER pivot
+        if (hitX >= 0 && hitX <= 15 && hitY >= 20 && hitY <= 35) {
+            currentImageMode = (currentImageMode == ManipulationMode.ROTATE) ? ManipulationMode.NONE : ManipulationMode.ROTATE;
+            playClickSound();
+            return true;
+        }
+
+        if (hitX >= 0 && hitX <= 15 && hitY >= 40 && hitY <= 55) {
+            currentImageMode = (currentImageMode == ManipulationMode.ALPHA) ? ManipulationMode.NONE : ManipulationMode.ALPHA;
+            playClickSound();
+            return true;
+        }
+
         double iw = selectedCanvasImage.getWidth();
         double ih = selectedCanvasImage.getHeight();
         double centerX = selectedCanvasImage.getX() + iw / 2.0;
@@ -1937,12 +1771,12 @@ public class QuestScreen extends Screen {
         double localY = (dx * Math.sin(angle) + dy * Math.cos(angle)) + (ih / 2.0);
 
         if (currentImageMode == ManipulationMode.SCALE) {
-            int s = 6; // Matching thickness in renderer
-            // Hitboxes for the external frame (slightly inflated for easier clicking)
+            int s = 6;
+
             int[][] hBoxes = {
-                    {-s, -s, s, s}, {0, -s, (int)iw, s}, {(int)iw, -s, s, s}, // TL, T, TR
-                    {(int)iw, 0, s, (int)ih}, {(int)iw, (int)ih, s, s},       // R, BR
-                    {0, (int)ih, (int)iw, s}, {-s, (int)ih, s, s}, {-s, 0, s, (int)ih} // B, BL, L
+                    {-s, -s, s, s}, {0, -s, (int) iw, s}, {(int) iw, -s, s, s},
+                    {(int) iw, 0, s, (int) ih}, {(int) iw, (int) ih, s, s},
+                    {0, (int) ih, (int) iw, s}, {-s, (int) ih, s, s}, {-s, 0, s, (int) ih}
             };
 
             for (int i = 0; i < hBoxes.length; i++) {
@@ -1952,7 +1786,6 @@ public class QuestScreen extends Screen {
                     this.scaleHandleIndex = i;
                     this.isDraggingScaleHandle = true;
 
-                    // Capture starting state for delta calculations
                     this.startX = selectedCanvasImage.getX();
                     this.startY = selectedCanvasImage.getY();
                     this.startW = selectedCanvasImage.getWidth();
@@ -1963,7 +1796,7 @@ public class QuestScreen extends Screen {
             }
         } else if (currentImageMode == ManipulationMode.ROTATE) {
             int hs = 8;
-            // Updated hit detection to match external handle positions
+
             boolean tl = localX >= -hs && localX <= 0 && localY >= -hs && localY <= 0;
             boolean tr = localX >= iw && localX <= iw + hs && localY >= -hs && localY <= 0;
             boolean bl = localX >= -hs && localX <= 0 && localY >= ih && localY <= ih + hs;
@@ -1989,7 +1822,6 @@ public class QuestScreen extends Screen {
         double worldMouseX = this.offsetX + ((mouseX - absoluteCenterX) / this.zoom);
         double worldMouseY = this.offsetY + ((mouseY - absoluteCenterY) / this.zoom);
 
-        // FIX: Re-calculate local mouse position relative to the center pivot
         double iw = ci.getWidth();
         double ih = ci.getHeight();
         double centerX = ci.getX() + iw / 2.0;
@@ -2007,8 +1839,7 @@ public class QuestScreen extends Screen {
     public void openImagePicker(double snappedX, double snappedY) {
         Thread pickerThread = new Thread(() -> {
             String path = null;
-            
-            // Use MemoryStack to handle the low-level pointers for file filters
+
             try (MemoryStack stack = MemoryStack.stackPush()) {
                 PointerBuffer filters = stack.mallocPointer(1);
                 filters.put(stack.UTF8("*.png"));
@@ -2020,7 +1851,6 @@ public class QuestScreen extends Screen {
                 File file = new File(path);
                 String fileName = file.getName();
 
-                // LOCAL VALIDATION: Catch the "All Files" fallback immediately
                 if (!fileName.toLowerCase().endsWith(".png")) {
                     Minecraft.getInstance().execute(() -> {
                         if (Minecraft.getInstance().player != null) {
@@ -2031,23 +1861,22 @@ public class QuestScreen extends Screen {
                 }
 
                 try {
-                    // Read bytes in the background thread to prevent game stutter
-                    byte[] data = Files.readAllBytes(file.toPath());
-                Minecraft.getInstance().execute(() -> {
-                    ClientPacketDistributor.sendToServer(new UploadImagePayload(fileName, data));
 
-                    // Create and add the image to the canvas immediately so it appears without a restart
-                    QuestCanvasImage ci = new QuestCanvasImage("img_" + System.currentTimeMillis(), fileName, snappedX, snappedY, 64.0, 64.0, 0f, 1.0f);
-                    ci.setChapterName(this.selectedChapter.getId());
-                    this.allCanvasImages.add(ci);
-                    saveChapterData(this.selectedChapter.getId());
-                });
-                } catch (Exception e) { e.printStackTrace(); }
+                    byte[] data = Files.readAllBytes(file.toPath());
+                    Minecraft.getInstance().execute(() -> {
+                        ClientPacketDistributor.sendToServer(new UploadImagePayload(fileName, data));
+
+                        QuestCanvasImage ci = new QuestCanvasImage("img_" + System.currentTimeMillis(), fileName, snappedX, snappedY, 64.0, 64.0, 0f, 1.0f);
+                        ci.setChapterName(this.selectedChapter.getId());
+                        this.allCanvasImages.add(ci);
+                        saveChapterData(this.selectedChapter.getId());
+                    });
+                } catch (Exception e) {
+                    e.printStackTrace();
+                }
             }
         });
-        
-        // FIX: Setting the thread as a Daemon ensures that it won't block 
-        // the Minecraft process from exiting if the user closes the game.
+
         pickerThread.setDaemon(true);
         pickerThread.start();
     }
@@ -2055,25 +1884,21 @@ public class QuestScreen extends Screen {
     private Identifier getOrRequestImage(String imageId) {
         if (imageId == null || imageId.isEmpty()) return null;
 
-        // 1. Check if already loaded in memory
         if (DYNAMIC_IMAGES.containsKey(imageId)) return DYNAMIC_IMAGES.get(imageId);
 
-        // 2. Check if we are already waiting for this image (prevents spam)
         if (PENDING_REQUESTS.contains(imageId)) return null;
 
-        // Mark as pending immediately
         PENDING_REQUESTS.add(imageId);
 
-        // 3. Check local disk cache folder
         File cacheFile = Minecraft.getInstance().gameDirectory.toPath().resolve("simplyquests_cache").resolve(imageId).toFile();
         if (cacheFile.exists()) {
             try {
                 loadTextureFromFile(imageId, Files.readAllBytes(cacheFile.toPath()));
-                return null; // Will be available next frame once loadTextureFromFile finishes
-            } catch (Exception ignored) {}
+                return null;
+            } catch (Exception ignored) {
+            }
         }
 
-        // 4. Not on disk? Request from server immediately
         ClientPacketDistributor.sendToServer(new RequestImagePayload(imageId));
 
         return null;
@@ -2082,11 +1907,11 @@ public class QuestScreen extends Screen {
     public static void loadTextureFromFile(String imageId, byte[] data) {
         Minecraft.getInstance().execute(() -> {
             try {
-                // Once loaded, we are no longer "pending"
+
                 PENDING_REQUESTS.remove(imageId);
                 NativeImage nativeImage = NativeImage.read(new ByteArrayInputStream(data));
                 DynamicTexture dynamicTexture = new DynamicTexture(() -> "simplyquests/dynamic/" + imageId, nativeImage);
-                // Use regex sanitization for dynamic image paths
+
                 Identifier id = Identifier.fromNamespaceAndPath("simplyquests", ("dynamic/" + imageId).toLowerCase().replaceAll("[^a-z0-9/._-]", "_"));
                 Minecraft.getInstance().getTextureManager().register(id, dynamicTexture);
                 DYNAMIC_IMAGES.put(imageId, id);
@@ -2097,38 +1922,38 @@ public class QuestScreen extends Screen {
     }
 
     public static void deleteLocalImageCache(String imageId) {
-        // 1. Remove from memory map so the UI stops trying to use the old Identifier
+
         DYNAMIC_IMAGES.remove(imageId);
         PENDING_REQUESTS.remove(imageId);
 
-        // 2. Physically delete the file from the local machine's cache folder
         File cacheFile = Minecraft.getInstance().gameDirectory.toPath().resolve("simplyquests_cache").resolve(imageId).toFile();
         if (cacheFile.exists()) {
             cacheFile.delete();
         }
     }
 
-    // Quick helper method to keep code clean
     private void drawQuestNode(GuiGraphicsExtractor graphics, int x, int y, int size, boolean isSelected, boolean isHovered, int stateColor, Quest quest) {
         boolean isLocked = !quest.getLockedBy().isEmpty();
-        // Lighten the background if hovered
+
         int backgroundColor = (isHovered && !isInputBlocked() && !isContextMenuOpen && !isLocked) ? COL_PANEL_HEADER : COL_UI_BG;
 
-        // FIX: Force ERROR color if the node is locked by an admin
         int borderColor = isLocked ? COL_ERROR : (isSelected ? COL_TEXT_SELECTED : stateColor);
 
         QuestShapeRenderer.render(quest.getShape(), graphics, x, y, size, borderColor, backgroundColor);
     }
-
-    // --- ZOOM CENTERING SCROLL MATH ---
 
     @Override
     public boolean mouseScrolled(double mouseX, double mouseY, double scrollX, double scrollY) {
         boolean isMouseOverSidebar = mouseX <= this.currentSidebarWidth;
 
         if (this.isRewardSummaryOpen && rewardsToShow.size() > 20) {
-            if (scrollY > 0 && summaryPage > 0) { summaryPage--; playClickSound(); }
-            else if (scrollY < 0 && (summaryPage + 1) * 20 < rewardsToShow.size()) { summaryPage++; playClickSound(); }
+            if (scrollY > 0 && summaryPage > 0) {
+                summaryPage--;
+                playClickSound();
+            } else if (scrollY < 0 && (summaryPage + 1) * 20 < rewardsToShow.size()) {
+                summaryPage++;
+                playClickSound();
+            }
             return true;
         }
 
@@ -2136,7 +1961,7 @@ public class QuestScreen extends Screen {
             int panelH = 240;
             int y = (this.height - panelH) / 2;
             if (mouseY >= y + 30 && mouseY <= y + panelH - 30) {
-                int totalRows = (CONFIG_ITEM_MAP.length + 2) / 2; // +2 to account for the extra Slider row
+                int totalRows = (CONFIG_ITEM_MAP.length + 2) / 2;
                 int contentHeight = totalRows * 22;
                 int maxScroll = Math.max(0, contentHeight - (panelH - 60));
 
@@ -2177,7 +2002,6 @@ public class QuestScreen extends Screen {
         this.zoom = Math.max(0.3, Math.min(this.zoom, 2.0));
         QuestClientData.setZoom(this.zoom);
 
-        // 2. Perform the zoom-to-mouse math
         double absoluteCenterX = this.width / 2.0;
         double absoluteCenterY = this.height / 2.0;
         double mouseFromCenterX = mouseX - absoluteCenterX;
@@ -2186,7 +2010,6 @@ public class QuestScreen extends Screen {
         this.offsetX += (mouseFromCenterX / oldZoom) - (mouseFromCenterX / this.zoom);
         this.offsetY += (mouseFromCenterY / oldZoom) - (mouseFromCenterY / this.zoom);
 
-        // 3. Trigger a local disk save immediately
         QuestClientData.saveChapterViewState(this.selectedChapter.getId(), this.offsetX, this.offsetY, this.zoom);
 
         return true;
@@ -2196,7 +2019,6 @@ public class QuestScreen extends Screen {
         int w = 110;
         int h = optionCount * 20;
 
-        // Clamp X and Y so the menu stays fully on screen
         if (x + w > this.width) x = this.width - w;
         if (y + h > this.height) y = this.height - h;
         if (x < 0) x = 0;
@@ -2261,12 +2083,8 @@ public class QuestScreen extends Screen {
             return true;
         }
 
-// 1. GLOBAL PICKERS (Icon, Type, Target) - Highest Priority
         if (PickerHandler.handle(this, mouseX, mouseY, button)) return true;
 
-        // 1.5 Claim All Button Check (Only if not in a modal and rewards are available)
-        
-        // --- NEW: Image Manipulation Check ---
         if (selectedCanvasImage != null && handleImageInteraction(mouseX, mouseY, button)) {
             return true;
         }
@@ -2281,13 +2099,12 @@ public class QuestScreen extends Screen {
             }
         }
 
-        // 2. CONTEXT MENU INPUT
         if (this.isContextMenuOpen) {
             if (button == GLFW.GLFW_MOUSE_BUTTON_1 && isClickingContextMenu(mouseX, mouseY)) {
                 handleContextMenuClick(mouseX, mouseY);
             } else {
                 this.isContextMenuOpen = false;
-                // FIX: Reset all specific context menu flags when clicking outside
+
                 this.isSideBarContextMenu = false;
                 this.isSideBarEntryMenu = false;
                 this.isTaskContextMenu = false;
@@ -2299,13 +2116,10 @@ public class QuestScreen extends Screen {
             return true;
         }
 
-        // 3. MOVE MODES (Dragging something on canvas)
         if (CanvasHandler.handleMoveModes(this, mouseX, mouseY, button)) return true;
 
-        // 4. EDITOR WINDOWS (Task, Reward, Text, Quest)
         if (EditorHandler.handle(this, mouseX, mouseY, button)) return true;
 
-        // 5. MODAL SCREENS (Settings, Submission)
         if (this.isSettingsOpen) {
             if (button == GLFW.GLFW_MOUSE_BUTTON_1) handleSettingsClicks(mouseX, mouseY);
             return true;
@@ -2315,10 +2129,8 @@ public class QuestScreen extends Screen {
             return true;
         }
 
-        // 6. QUEST DETAILS WINDOW
         if (CanvasHandler.handleDetailsWindow(this, mouseX, mouseY, button)) return true;
 
-        // 7. SIDEBAR & CANVAS
         if (CanvasHandler.handleSidebar(this, mouseX, mouseY, button)) return true;
         if (CanvasHandler.handleCanvas(this, mouseX, mouseY, button)) return true;
 
@@ -2327,17 +2139,21 @@ public class QuestScreen extends Screen {
 
     @Override
     public void onClose() {
-        // LOCAL SAVE: Store current camera state to the client's machine only
+
         if (this.selectedChapter != null) {
             QuestClientData.saveChapterViewState(this.selectedChapter.getId(), this.offsetX, this.offsetY, this.zoom);
             QuestClientData.setLastChapter(this.selectedChapter.getId());
         }
 
-        // CLEANUP: Clear static caches to help the JVM release native memory 
-        // (DynamicTextures use off-heap memory via NativeImage)
+        if (this.originalQuest != null && (isEditorOpen || isTaskEditorOpen || isRewardEditorOpen)) {
+            ClientPacketDistributor.sendToServer(new QuestLockPayload(this.originalQuest.getId(), false));
+        }
+        if (this.editorUI != null) {
+            this.editorUI.closePicker();
+        }
+
         if (!DYNAMIC_IMAGES.isEmpty()) {
-            // We don't necessarily want to unregister them all (in case the screen 
-            // is just being toggled), but clearing the request set is safe.
+
             PENDING_REQUESTS.clear();
         }
 
@@ -2388,34 +2204,31 @@ public class QuestScreen extends Screen {
     public boolean keyPressed(KeyEvent event) {
         int key = event.key();
 
-        // --- PRIORITY ESCAPE HANDLING ---
         if (key == GLFW.GLFW_KEY_ESCAPE) {
-            // 1. Color Picker has absolute top priority
+
             if (editorUI.isColorPickerOpen) {
                 editorUI.isColorPickerOpen = false;
                 playClickSound();
                 return true;
             }
 
-            // 2. Pickers (Icon, Dependency, Shape, etc.)
             if (editorUI.isPickerOpen()) {
                 editorUI.closePicker();
                 return true;
             }
 
-            // 3. Active Typing Fields inside a window (Quantity, Name, etc.)
             if (editorUI.isTitleOpen || editorUI.isSubTitleOpen || editorUI.isDescriptionOpen ||
-                editorUI.isNameOpen || editorUI.isQuantityOpen ||
-                editorUI.isXOpen || editorUI.isYOpen || editorUI.isZOpen || editorUI.isHexEditing) {
+                    editorUI.isNameOpen || editorUI.isQuantityOpen ||
+                    editorUI.isXOpen || editorUI.isYOpen || editorUI.isZOpen || editorUI.isHexEditing) {
                 editorUI.closePicker();
                 return true;
             }
 
-            // 4. Modal Windows
             if (this.isTaskEditorOpen || this.isRewardEditorOpen || this.isEditorOpen || this.isTextEditorOpen) {
-                // FIX: Release lock on Escape
+                this.editorUI.closePicker();
+
                 if (this.originalQuest != null) {
-                    this.originalQuest.setLockedBy(""); // Local loopback
+                    this.originalQuest.setLockedBy("");
                     ClientPacketDistributor.sendToServer(new QuestLockPayload(this.originalQuest.getId(), false));
                 }
 
@@ -2429,7 +2242,6 @@ public class QuestScreen extends Screen {
                 return true;
             }
 
-            // 5. Quest Details Window
             if (this.selectedQuest != null) {
                 this.selectedQuest = null;
                 playClickSound();
@@ -2452,29 +2264,27 @@ public class QuestScreen extends Screen {
                 }
                 return true;
             }
-            return true; //Consume all keys to prevent 'o' etc from closing the screen.
+            return true;
         }
-        // Cancel Move Mode with Escape
+
         if (this.movingQuest != null && event.key() == GLFW.GLFW_KEY_ESCAPE) {
             this.movingQuest = null;
             playClickSound();
             return true;
         }
-        // Cancel Sidebar Move with Escape
+
         if (this.movingSidebarChapter != null && event.key() == GLFW.GLFW_KEY_ESCAPE) {
             this.movingSidebarChapter = null;
             playClickSound();
             return true;
         }
 
-        // Cancel Group Move with Escape
         if (this.movingSidebarGroup != null && event.key() == GLFW.GLFW_KEY_ESCAPE) {
             this.movingSidebarGroup = null;
             playClickSound();
             return true;
         }
 
-        // Handle Enter key for Editor Saving (Quest and Task)
         if (key == GLFW.GLFW_KEY_ENTER || key == GLFW.GLFW_KEY_KP_ENTER) {
             if (editorUI.isHexEditing) {
                 editorUI.isHexEditing = false;
@@ -2485,15 +2295,13 @@ public class QuestScreen extends Screen {
                 return true;
             }
             if (this.isEditorOpen) {
-                // If a text sub-editor is open, commit that specific field first
-                // FIX: Commit text AND proceed to saveChanges() to handle unlocking
+
                 if (editorUI.isTitleOpen) questToModify.setTitle(editorUI.searchQuery);
                 else if (editorUI.isSubTitleOpen) questToModify.setSubTitle(editorUI.searchQuery);
                 else if (editorUI.isDescriptionOpen) questToModify.setDescription(editorUI.searchQuery);
 
                 editorUI.closePicker();
 
-                // General editor save
                 saveChanges();
                 playClickSound();
                 return true;
@@ -2501,7 +2309,8 @@ public class QuestScreen extends Screen {
                 if (editorUI.isQuantityOpen) {
                     try {
                         taskToModify.setRequiredAmount(Integer.parseInt(editorUI.searchQuery));
-                    } catch (NumberFormatException ignored) {}
+                    } catch (NumberFormatException ignored) {
+                    }
                     editorUI.closePicker();
                 } else if (editorUI.isXOpen || editorUI.isYOpen || editorUI.isZOpen) {
                     try {
@@ -2509,47 +2318,46 @@ public class QuestScreen extends Screen {
                         if (editorUI.isXOpen) taskToModify.setTargetX(val);
                         else if (editorUI.isYOpen) taskToModify.setTargetY(val);
                         else if (editorUI.isZOpen) taskToModify.setTargetZ(val);
-                    } catch (NumberFormatException ignored) {}
+                    } catch (NumberFormatException ignored) {
+                    }
                     editorUI.closePicker();
                 } else if (editorUI.isNameOpen) {
                     updateTaskNameAndId(editorUI.searchQuery);
                     editorUI.closePicker();
                 } else {
-                    // Release lock on Save via Enter key
+
                     if (this.originalQuest != null) {
-                        this.originalQuest.setLockedBy(""); // Local loopback
+                        this.originalQuest.setLockedBy("");
                         ClientPacketDistributor.sendToServer(new QuestLockPayload(this.originalQuest.getId(), false));
                     }
-                    // Act like the Save button for the Task Editor
+
                     if (this.originalTask == null) {
                         this.selectedQuest.getTasks().add(this.taskToModify);
                     } else {
-                        // Update existing task in the list
+
                         int index = this.selectedQuest.getTasks().indexOf(this.originalTask);
-                        // FIX: Fallback to add if index is -1 to prevent crash
+
                         if (index == -1) this.selectedQuest.getTasks().add(this.taskToModify);
                         else {
                             this.selectedQuest.getTasks().set(index, this.taskToModify);
                         }
                     }
-                
-                // FIX: Enforce exclusivity (Radio Button behavior)
-                // If this task is being set as the icon, clear the flag from all other tasks
-                if (this.tempUseAsIcon) {
-                    for (QuestTask t : this.selectedQuest.getTasks()) {
-                        t.setIcon(false);
+
+                    if (this.tempUseAsIcon) {
+                        for (QuestTask t : this.selectedQuest.getTasks()) {
+                            t.setIcon(false);
+                        }
+                        this.taskToModify.setIcon(true);
+                        this.selectedQuest.setUseTaskIcon(true);
+                        this.selectedQuest.setLogo(this.taskToModify.getIconStack().getItem());
+                    } else {
+                        this.taskToModify.setIcon(false);
+
+                        boolean anyIcons = this.selectedQuest.getTasks().stream().anyMatch(QuestTask::isIcon);
+                        if (!anyIcons) this.selectedQuest.setUseTaskIcon(false);
                     }
-                    this.taskToModify.setIcon(true);
-                    this.selectedQuest.setUseTaskIcon(true);
-                    this.selectedQuest.setLogo(this.taskToModify.getIconStack().getItem());
-                } else {
-                    this.taskToModify.setIcon(false);
-                    // Only disable the quest's task icon mode if NO tasks are providers anymore
-                    boolean anyIcons = this.selectedQuest.getTasks().stream().anyMatch(QuestTask::isIcon);
-                    if (!anyIcons) this.selectedQuest.setUseTaskIcon(false);
-                }
                     updateQuestStates();
-                    saveChapterData(this.selectedQuest.getChapterName()); // SAVE TRIGGER: Task added/updated
+                    saveChapterData(this.selectedQuest.getChapterName());
                     playClickSound();
                     this.isTaskEditorOpen = false;
                     this.taskToModify = null;
@@ -2559,13 +2367,12 @@ public class QuestScreen extends Screen {
                 return true;
             } else if (this.isRewardEditorOpen) {
                 if (editorUI.isQuantityOpen || editorUI.isNameOpen) {
-                    // Release lock on Save via Enter key
+
                     if (this.originalQuest != null) {
-                        this.originalQuest.setLockedBy(""); // Local loopback
+                        this.originalQuest.setLockedBy("");
                         ClientPacketDistributor.sendToServer(new QuestLockPayload(this.originalQuest.getId(), false));
                     }
 
-                    // FIX: Resolve the active target (Parent or Choice) based on the selection index
                     QuestReward activeTarget = (editorUI.selectedRewardChoiceIndex == -1)
                             ? rewardToModify
                             : rewardToModify.getSubRewards().get(editorUI.selectedRewardChoiceIndex);
@@ -2573,28 +2380,28 @@ public class QuestScreen extends Screen {
                     if (editorUI.isQuantityOpen && activeTarget != null) {
                         try {
                             int amount = Integer.parseInt(editorUI.searchQuery.trim());
-                            activeTarget.setCount(amount); // Update the specific choice
-                        } catch (NumberFormatException ignored) {}
+                            activeTarget.setCount(amount);
+                        } catch (NumberFormatException ignored) {
+                        }
                     } else if (editorUI.isNameOpen && activeTarget != null) {
                         activeTarget.setCommand(editorUI.searchQuery);
                     }
                     editorUI.closePicker();
                 } else {
-                    // Release lock when saving Reward via Enter
+
                     if (this.originalQuest != null) {
-                        this.originalQuest.setLockedBy(""); // Local loopback
+                        this.originalQuest.setLockedBy("");
                         ClientPacketDistributor.sendToServer(new QuestLockPayload(this.originalQuest.getId(), false));
                     }
-                    // FIX: Discard unconfigured "Ghost" choices before saving via Enter key (Empty Items or Empty Commands)
+
                     this.rewardToModify.getSubRewards().removeIf(r -> (r.getType() == QuestReward.RewardType.ITEM && r.getItem() == Items.AIR) ||
                             (r.getType() == QuestReward.RewardType.COMMAND && r.getCommand().trim().isEmpty()));
 
-                    // Act like the Save button for the Reward Editor
                     if (this.originalReward == null) {
                         this.selectedQuest.getRewards().add(this.rewardToModify);
                     } else {
                         int index = this.selectedQuest.getRewards().indexOf(this.originalReward);
-                        // FIX: Fallback to add if index is -1 to prevent crash
+
                         if (index == -1) this.selectedQuest.getRewards().add(this.rewardToModify);
                         else this.selectedQuest.getRewards().set(index, this.rewardToModify);
                     }
@@ -2608,7 +2415,7 @@ public class QuestScreen extends Screen {
                 }
                 return true;
             } else if (this.isTextEditorOpen) {
-                // Save and close Canvas Text Editor via Enter Key
+
                 editingCanvasText.setText(editorUI.searchQuery);
                 if (allCanvasTexts.contains(originalCanvasText)) {
                     int index = allCanvasTexts.indexOf(originalCanvasText);
@@ -2625,7 +2432,6 @@ public class QuestScreen extends Screen {
             }
         }
 
-        // 1. Icon Picker Search Logic (Highest Priority)
         if (editorUI.isPickerOpen() || isTextEditorOpen || editorUI.isHexEditing || editorUI.isSubTitleOpen || editorUI.isDescriptionOpen || editorUI.isQuantityOpen || editorUI.isXOpen || editorUI.isYOpen || editorUI.isZOpen) {
             if (event.key() == GLFW.GLFW_KEY_A && (event.modifiers() & GLFW.GLFW_MOD_CONTROL) != 0) {
                 if (editorUI.isHexEditing) {
@@ -2640,7 +2446,6 @@ public class QuestScreen extends Screen {
                 return true;
             }
 
-            // 1. Perform the action (Backspace, Left, Right)
             if (editorUI.isHexEditing) {
                 if (key == GLFW.GLFW_KEY_BACKSPACE) {
                     if (editorUI.selectionStart != -1) {
@@ -2667,7 +2472,7 @@ public class QuestScreen extends Screen {
 
             if (key == GLFW.GLFW_KEY_LEFT) {
                 if (isShiftDown) {
-                    // Initialize selection if not already selecting
+
                     if (editorUI.selectionStart == -1) {
                         editorUI.selectionStart = editorUI.cursorIndex;
                     }
@@ -2675,14 +2480,16 @@ public class QuestScreen extends Screen {
                         editorUI.cursorIndex--;
                     }
                     editorUI.selectionEnd = editorUI.cursorIndex;
-                    // Clear selection if we moved back to the starting point
+
                     if (editorUI.selectionStart == editorUI.selectionEnd) {
-                        editorUI.selectionStart = -1; editorUI.selectionEnd = -1;
+                        editorUI.selectionStart = -1;
+                        editorUI.selectionEnd = -1;
                     }
                 } else {
                     if (editorUI.selectionStart != -1) {
                         editorUI.cursorIndex = Math.min(editorUI.selectionStart, editorUI.selectionEnd);
-                        editorUI.selectionStart = -1; editorUI.selectionEnd = -1;
+                        editorUI.selectionStart = -1;
+                        editorUI.selectionEnd = -1;
                     } else if (editorUI.cursorIndex > 0) {
                         editorUI.cursorIndex--;
                     }
@@ -2698,12 +2505,14 @@ public class QuestScreen extends Screen {
                     }
                     editorUI.selectionEnd = editorUI.cursorIndex;
                     if (editorUI.selectionStart == editorUI.selectionEnd) {
-                        editorUI.selectionStart = -1; editorUI.selectionEnd = -1;
+                        editorUI.selectionStart = -1;
+                        editorUI.selectionEnd = -1;
                     }
                 } else {
                     if (editorUI.selectionStart != -1) {
                         editorUI.cursorIndex = Math.max(editorUI.selectionStart, editorUI.selectionEnd);
-                        editorUI.selectionStart = -1; editorUI.selectionEnd = -1;
+                        editorUI.selectionStart = -1;
+                        editorUI.selectionEnd = -1;
                     } else if (editorUI.cursorIndex < editorUI.searchQuery.length()) {
                         editorUI.cursorIndex++;
                     }
@@ -2717,7 +2526,7 @@ public class QuestScreen extends Screen {
                 return true;
             } else if (key == GLFW.GLFW_KEY_BACKSPACE) {
                 if (editorUI.selectionStart != -1) {
-                    // Delete the selection
+
                     String query = editorUI.searchQuery;
                     int start = Math.min(editorUI.selectionStart, editorUI.selectionEnd);
                     int end = Math.max(editorUI.selectionStart, editorUI.selectionEnd);
@@ -2726,17 +2535,16 @@ public class QuestScreen extends Screen {
                     editorUI.selectionStart = -1;
                     editorUI.selectionEnd = -1;
                 } else if (editorUI.cursorIndex > 0) {
-                    // Normal character-by-character backspace
+
                     String query = editorUI.searchQuery;
                     editorUI.searchQuery = query.substring(0, editorUI.cursorIndex - 1) + query.substring(editorUI.cursorIndex);
                     editorUI.cursorIndex--;
                 }
                 return true;
             }
-            return true; //Consume all other keys while picker/title editor is open
+            return true;
         }
 
-        // 3. Your existing keybind check
         if (ClientQuestEvents.OPEN_QUEST_KEY.matches(event) || key == GLFW.GLFW_KEY_E) {
             if (this.isRewardSummaryOpen) {
                 this.isRewardSummaryOpen = false;
@@ -2751,7 +2559,10 @@ public class QuestScreen extends Screen {
 
         return super.keyPressed(event);
     }
-    public List<SidebarEntry> getSidebarEntries() { return this.sidebarEntries; }
+
+    public List<SidebarEntry> getSidebarEntries() {
+        return this.sidebarEntries;
+    }
 
     @Override
     public boolean isInGameUi() {
@@ -2770,80 +2581,57 @@ public class QuestScreen extends Screen {
 
         if (distance == 0) return;
 
-        // Calculate the angle between the two nodes in their local grid space
         float angle = (float) Math.atan2(dy, dx);
 
-        // 1. Isolate the matrix state for this line
         graphics.pose().pushMatrix();
 
-        // 2. Move our drawing origin to the center of the parent node
         graphics.pose().translate(new Vector2f(x1, y1));
 
-        // 3. Rotate so the "Forward" direction of the line is on the local Y-axis.
-        // This allows us to use the vertical fillGradient helper to blend colors along the line's length.
-        graphics.pose().rotate(angle - (float)Math.PI / 2.0f);
+        graphics.pose().rotate(angle - (float) Math.PI / 2.0f);
 
-        // Safety check: if nodes are overlapping, don't draw a line
         if (distance <= r1 + r2) {
             graphics.pose().popMatrix();
             return;
         }
-        
-        // 4. INTEGER SNAPPING: Ensure line and arrow widths match exactly to prevent gaps/overflow
-        int iThick = (int)thickness;
+
+        int iThick = (int) thickness;
         int lineXStart = -(iThick / 2);
         int lineXEnd = lineXStart + iThick;
         float visibleLength = distance - r1 - r2;
-        float arrowSpacing = 8.0f; // This MUST match the modulo in renderQuestTree
+        float arrowSpacing = 8.0f;
 
-        // 4. PINCHED GRADIENT: Concentrates the color swap in the center 40% of the line
-        // This prevents the parent color from dominating the entire line visually.
         float blendStart = r1 + (visibleLength * 0.3f);
         float blendEnd = r1 + (visibleLength * 0.7f);
 
-        // 4a. Draw the Static Gradient Line
-        // Segment 1: Solid Parent Color
         graphics.fill(lineXStart, (int) r1, lineXEnd, (int) blendStart, color1);
 
-        // Segment 2: Transition Zone (The actual gradient)
         graphics.fillGradient(lineXStart, (int) blendStart, lineXEnd, (int) blendEnd, color1, color2);
 
-        // Segment 3: Solid Child Color
         graphics.fill(lineXStart, (int) blendEnd, lineXEnd, (int) (distance - r2), color2);
 
-        // 4b. Draw Flow Arrows ('>' symbols) along the visible line gap
-        float lineStart = r1; 
+        float lineStart = r1;
         float lineEnd = distance - r2;
 
-        // 4c. Align for Arrow Direction
-        graphics.pose().rotate((float)Math.PI / 2.0f);
+        graphics.pose().rotate((float) Math.PI / 2.0f);
 
-        // FIX: Remove margins and safety clips. The loop now starts/ends 1 unit early/late
-        // so arrows appear to emerge from and submerge into the nodes.
         for (float d = lineStart + (arrowPhase - arrowSpacing); d <= lineEnd + arrowSpacing; d += arrowSpacing) {
-            // The arrows still move! We sample the color of the static gradient at 
-            // the arrow's current position to keep the "etched" look consistent.
+
             float ratio = Math.max(0, Math.min(1, (d - r1) / visibleLength));
             int baseColor = interpolateColor(color1, color2, ratio);
 
-            // Create a "Dark Etched" version (Darken RGB to 30% of original, Alpha to 60%)
-            int r = (int)(((baseColor >> 16) & 0xFF) * 0.3f);
-            int g = (int)(((baseColor >> 8) & 0xFF) * 0.3f);
-            int b = (int)((baseColor & 0xFF) * 0.3f);
+            int r = (int) (((baseColor >> 16) & 0xFF) * 0.3f);
+            int g = (int) (((baseColor >> 8) & 0xFF) * 0.3f);
+            int b = (int) ((baseColor & 0xFF) * 0.3f);
             int etchedColor = (0x99 << 24) | (r << 16) | (g << 8) | b;
 
-            // FIX: Removed integer casting. Using Vector2f allows the GPU to handle 
-            // sub-pixel translation, which eliminates the "jitter" during movement.
-            // FURTHER FIX: Use primitive floats instead of new Vector2f object to prevent micro-stuttering from GC pressure.
             graphics.pose().pushMatrix();
             float tx = d - iThick / 2.0f;
-            graphics.pose().translate(tx, (float)lineXStart);
+            graphics.pose().translate(tx, (float) lineXStart);
             graphics.blit(RenderPipelines.GUI_TEXTURED, QuestEditorUI.FLOW_ARROW,
                     0, 0, 0, 0, iThick, iThick, iThick, iThick, etchedColor);
             graphics.pose().popMatrix();
         }
 
-        // 5. Restore the canvas matrix
         graphics.pose().popMatrix();
     }
 
@@ -2867,8 +2655,7 @@ public class QuestScreen extends Screen {
     }
 
     public boolean isMouseOverNode(double mouseX, double mouseY, Quest quest) {
-        // 1. Convert the quest's local canvas position to absolute screen position
-        // We reverse the matrix transformation math we did during the render pass!
+
         double absoluteCenterX = this.width / 2.0;
         double absoluteCenterY = this.height / 2.0;
 
@@ -2876,15 +2663,12 @@ public class QuestScreen extends Screen {
         double screenY = absoluteCenterY + (quest.getY() - this.offsetY) * this.zoom;
         double screenSize = quest.getSize() * this.zoom;
 
-        // 2. Check if mouse fits cleanly inside the converted bounding box
         return mouseX >= screenX && mouseX <= screenX + screenSize && mouseY >= screenY && mouseY <= screenY + screenSize;
     }
 
     private void drawGrid(GuiGraphicsExtractor graphics) {
-        float baseSize = (float) GRID_SNAP; // FIX: Use dynamic snap value for visual grid
+        float baseSize = (float) GRID_SNAP;
 
-        // 1. Calculate the view bounds in World Coordinates
-        // This tells us exactly what area of the map is currently visible
         float worldWidth = (float) this.width / (float) this.zoom;
         float worldHeight = (float) this.height / (float) this.zoom;
 
@@ -2893,13 +2677,11 @@ public class QuestScreen extends Screen {
         float minY = (float) this.offsetY - (worldHeight / 2.0f);
         float maxY = (float) this.offsetY + (worldHeight / 2.0f);
 
-        // 2. Align start points so lines snap to the grid (so quests sit perfectly on them)
         float startX = (float) Math.floor(minX / baseSize) * baseSize;
         float startY = (float) Math.floor(minY / baseSize) * baseSize;
 
         int gridColor = COL_GRID;
 
-        // 3. Draw lines across the entire calculated world bounds
         for (float x = startX; x <= maxX; x += baseSize) {
             graphics.fill((int) x, (int) minY, (int) x + 1, (int) maxY, gridColor);
         }
@@ -2913,11 +2695,10 @@ public class QuestScreen extends Screen {
 
         int panelWidth = 300;
         int panelHeight = 200;
-        int x = (this.popupX == -1) ? (this.width - panelWidth) / 2 : (int)this.popupX;
-        int y = (this.popupY == -1) ? (this.height - panelHeight) / 2 : (int)this.popupY;
+        int x = (this.popupX == -1) ? (this.width - panelWidth) / 2 : (int) this.popupX;
+        int y = (this.popupY == -1) ? (this.height - panelHeight) / 2 : (int) this.popupY;
         int midX = x + (panelWidth / 2);
 
-        // 1. Backgrounds
         String hoveredRewardLabel = null;
         String hoveredTaskName = null;
 
@@ -2925,10 +2706,8 @@ public class QuestScreen extends Screen {
         graphics.fill(x, y, x + panelWidth, y + 20, COL_PANEL_HEADER);
         drawBorder(graphics, x, y, panelWidth, panelHeight, COL_UI_BORDER);
 
-        // 2. Title & X Button (Hover Logic)
         graphics.centeredText(this.font, Component.literal(this.selectedQuest.getTitle()), midX, y + 6, COL_TEXT);
 
-        // Recalculated X button bounds for precise hover detection
         int xBtnLeft = x + panelWidth - 18;
         int xBtnRight = x + panelWidth - 5;
         int xBtnTop = y + 3;
@@ -2941,18 +2720,15 @@ public class QuestScreen extends Screen {
         int closeBtnSize = 10;
         int closeX = xBtnLeft + (xBtnRight - xBtnLeft - closeBtnSize) / 2;
         int closeY = xBtnTop + (xBtnBottom - xBtnTop - closeBtnSize) / 2;
-        
-        // FIX: Scale the 16x16 close icon to 10x10 screen pixels without cropping
+
         graphics.pose().pushMatrix();
         graphics.pose().translate(closeX, closeY);
         graphics.pose().scale(closeBtnSize / 16.0f, closeBtnSize / 16.0f);
         graphics.blit(RenderPipelines.GUI_TEXTURED, QuestEditorUI.CLOSE_ICON, 0, 0, 0.0f, 0.0f, 16, 16, 16, 16, xColor);
         graphics.pose().popMatrix();
 
-        // 3. Header Divider
         graphics.fill(x, y + 20, x + panelWidth, y + 21, COL_UI_BORDER);
 
-        // 4. Tasks & Rewards Section
         int headerY = y + 30;
         int tasksCenter = x + (panelWidth / 4);
         int rewardsCenter = x + (3 * panelWidth / 4);
@@ -2960,7 +2736,6 @@ public class QuestScreen extends Screen {
         graphics.centeredText(this.font, Component.literal("Tasks"), tasksCenter, headerY, COL_TEXT);
         graphics.centeredText(this.font, Component.literal("Rewards"), rewardsCenter, headerY, COL_TEXT);
 
-        // Task Add Button (+) if in edit mode and no tasks exist
         if (QuestGlobalState.isEditModeEnabled) {
             int plusX = tasksCenter + (this.font.width("Tasks") / 2) + 8;
             boolean hoveringPlus = mouseX >= plusX - 2 && mouseX <= plusX + 10 && mouseY >= headerY - 2 && mouseY <= headerY + 12;
@@ -2968,24 +2743,20 @@ public class QuestScreen extends Screen {
             graphics.text(this.font, Component.literal("+"), plusX, headerY, color);
         }
 
-        // --- REWARDS SECTION (Unified Task Style) ---
         var rewards = this.selectedQuest.getRewards();
         int rewardsAreaX = x + (panelWidth / 2) + 10;
         int rewardsAreaY = y + 45;
         int rSlotSize = 20, rMaxVisible = 4, rSlotTotalWidth = 24;
 
-        // Add Reward Button (+)
         if (QuestGlobalState.isEditModeEnabled) {
             int rPlusX = x + (3 * panelWidth / 4) + (this.font.width("Rewards") / 2) + 8;
             boolean hov = !isInputBlocked() && mouseX >= rPlusX - 2 && mouseX <= rPlusX + 12 && mouseY >= headerY - 2 && mouseY <= headerY + 12;
             graphics.text(font, Component.literal("+"), rPlusX, headerY, hov ? COL_TEXT_GOLD : COL_TEXT);
         }
 
-        // FIX: Update this flag to include the choice modal and summary so background interactions are blocked
         boolean isSubEditorOpen = isTaskEditorOpen || isRewardEditorOpen || isChoiceModalOpen || isRewardSummaryOpen;
         if (!rewards.isEmpty() && !isSubEditorOpen) {
-            // REFINED LOGIC: A reward is a choice bundle if its subRewards list is not empty.
-            // We render everything in its own slot, but bundles will cycle their display icons.
+
             int totalVisualItems = rewards.size();
 
             int startIdx = rewardPage * rMaxVisible;
@@ -2994,7 +2765,6 @@ public class QuestScreen extends Screen {
             boolean hasPager = rewards.size() > rMaxVisible;
             int renderX = rewardsAreaX + (hasPager ? 12 : 0);
 
-            // --- REWARD GHOST LINE (Reordering Indicator) ---
             if (this.movingReward != null && mouseX >= renderX && mouseX <= renderX + rTotalWidth) {
                 int snappedIX = -1;
                 for (int i = 0; i < visibleCount; i++) {
@@ -3008,10 +2778,10 @@ public class QuestScreen extends Screen {
                 graphics.fill(snappedIX, rewardsAreaY, snappedIX + 1, rewardsAreaY + rSlotSize, COL_UI_BORDER);
             }
 
-            // Pagination Arrows
             if (hasPager) {
                 if (rewardPage > 0) graphics.text(font, "<", rewardsAreaX, rewardsAreaY + 6, COL_TEXT);
-                if (startIdx + rMaxVisible < rewards.size()) graphics.text(font, ">", renderX + (rMaxVisible * rSlotTotalWidth), rewardsAreaY + 6, COL_TEXT);
+                if (startIdx + rMaxVisible < rewards.size())
+                    graphics.text(font, ">", renderX + (rMaxVisible * rSlotTotalWidth), rewardsAreaY + 6, COL_TEXT);
             }
 
             for (int i = 0; i < visibleCount; i++) {
@@ -3026,23 +2796,22 @@ public class QuestScreen extends Screen {
                 int circleColor = questDone ? COL_STATE_COMPLETED : COL_STATE_AVAILABLE;
 
                 if (isBundle) {
-                    // Bundle rendering (Cycling icons)
-                    // FIX: Include the primary reward in the cycling animation
+
                     List<QuestReward> allOptions = new ArrayList<>();
                     allOptions.add(reward);
                     allOptions.addAll(reward.getSubRewards());
-                    int cycleIdx = (int)((Util.getMillis() / 1000) % allOptions.size());
+                    int cycleIdx = (int) ((Util.getMillis() / 1000) % allOptions.size());
                     QuestReward displayReward = allOptions.get(cycleIdx);
 
                     editorUI.drawRewardIcon(graphics, displayReward, circleColor, innerColor, ix, rewardsAreaY, rSlotSize, questDone && !claimed);
                     renderRewardLabel(graphics, displayReward, ix, rewardsAreaY, rSlotSize);
                 } else {
-                    if (reward == movingReward) graphics.fill(ix, rewardsAreaY, ix + rSlotSize, rewardsAreaY + rSlotSize, 0x40FFFFFF);
+                    if (reward == movingReward)
+                        graphics.fill(ix, rewardsAreaY, ix + rSlotSize, rewardsAreaY + rSlotSize, 0x40FFFFFF);
                     editorUI.drawRewardIcon(graphics, reward, circleColor, innerColor, ix, rewardsAreaY, rSlotSize, questDone && !claimed);
                     renderRewardLabel(graphics, reward, ix, rewardsAreaY, rSlotSize);
                 }
 
-                // Hover Tooltip
                 if (isRewardHovered) {
                     if (claimed) {
                         hoveredRewardLabel = isBundle ? "Choice Reward (Claimed)" : getRewardTooltip(reward) + " (Claimed)";
@@ -3053,7 +2822,6 @@ public class QuestScreen extends Screen {
             }
         }
 
-        // 4b. Task List Rendering
         List<QuestTask> tasks = this.selectedQuest.getTasks();
         int tasksAreaX = x + 10;
         int tasksAreaY = y + 45;
@@ -3068,24 +2836,22 @@ public class QuestScreen extends Screen {
             boolean hasPagination = tasks.size() > maxVisibleTasks;
             int renderX = tasksAreaX + (hasPagination ? 12 : 0);
 
-            // --- TASK GHOST LINE (Reordering Indicator) ---
             if (this.movingTask != null && mouseX >= renderX && mouseX <= renderX + (maxVisibleTasks * slotTotalWidth)) {
                 int snappedIX = -1;
                 for (int i = 0; i < visibleCount; i++) {
                     int ix = renderX + (i * slotTotalWidth);
-                    // If mouse is in the left half of the slot, snap to the left edge
+
                     if (mouseX < ix + (slotTotalWidth / 2)) {
                         snappedIX = ix - 2;
                         break;
                     }
                 }
-                // If not snapped before any item, snap after the last visible item
+
                 if (snappedIX == -1) snappedIX = renderX + (visibleCount * slotTotalWidth) - 2;
 
                 graphics.fill(snappedIX, tasksAreaY, snappedIX + 1, tasksAreaY + slotSize, COL_UI_BORDER);
             }
 
-            // Draw cycling arrows
             if (hasPagination) {
                 if (taskPage > 0) graphics.text(font, "<", tasksAreaX, tasksAreaY + 6, COL_TEXT);
                 if (startIdx + maxVisibleTasks < tasks.size()) {
@@ -3098,25 +2864,21 @@ public class QuestScreen extends Screen {
                 QuestTask task = tasks.get(startIdx + i);
                 int ix = renderX + (i * slotTotalWidth);
 
-                // Fetch the synced current amount for this task immediately
                 int currentAmount = SimplyQuestsClientPacketHandler.CLIENT_TASK_PROGRESS.getOrDefault(task.getId(), 0);
 
-                // Dim the task being moved
                 boolean isBeingMoved = (task == this.movingTask);
                 float alpha = isBeingMoved ? 0.3f : 1.0f;
                 int highlightColor = isBeingMoved ? 0x10FFFFFF : 0x40FFFFFF;
 
-                // Remove dark background (make transparent) and add hover highlight
                 boolean isTaskHovered = mouseX >= ix && mouseX <= ix + slotSize && mouseY >= tasksAreaY && mouseY <= tasksAreaY + slotSize;
                 int innerColor = (isTaskHovered && !isBeingMoved && !isSubEditorOpen) ? COL_PANEL_HEADER : COL_UI_BG;
                 if (isTaskHovered && !isBeingMoved && !isSubEditorOpen) {
                     hoveredTaskName = getTaskTooltip(task);
                 }
 
-                // --- RENDER TASK INFO TEXT ---
                 String info = "";
                 if (task.getType() == QuestTask.TaskType.ITEM || task.getType() == QuestTask.TaskType.KILL) {
-                    // Use the pre-fetched amount for the text display
+
                     int displayAmount = Math.min(currentAmount, task.getRequiredAmount());
                     info = displayAmount + "/" + task.getRequiredAmount();
                 } else if (task.getType() == QuestTask.TaskType.LOCATION) {
@@ -3124,8 +2886,8 @@ public class QuestScreen extends Screen {
                 }
 
                 if (!info.isEmpty()) {
-                    float s = 0.5f; // Small scale to fit coordinates
-                    int textW = (int)(this.font.width(info) * s);
+                    float s = 0.5f;
+                    int textW = (int) (this.font.width(info) * s);
                     int tx = ix + (slotSize / 2) - (textW / 2);
                     int ty = tasksAreaY + slotSize + 2;
 
@@ -3136,67 +2898,57 @@ public class QuestScreen extends Screen {
                     graphics.pose().popMatrix();
                 }
 
-                // Draw Icon with Alpha support (for movement)
                 graphics.pose().pushMatrix();
-                // If your GuiGraphicsExtractor supports alpha, you can apply it here; otherwise, just render.
+
                 editorUI.drawTaskIcon(graphics, task, currentAmount, innerColor, ix + 2, tasksAreaY + 2, mouseX, mouseY, 16);
                 graphics.pose().popMatrix();
             }
         }
 
-        int hLine1Y = y + 75; // Pulled up from 90 to 75
-        graphics.fill(midX, y + 21, midX + 1, hLine1Y, COL_UI_BORDER); // Vert line
+        int hLine1Y = y + 75;
+        graphics.fill(midX, y + 21, midX + 1, hLine1Y, COL_UI_BORDER);
 
-        // 7. Moving Task Icon (Follows cursor)
         if (this.movingTask != null) {
             int current = SimplyQuestsClientPacketHandler.CLIENT_TASK_PROGRESS.getOrDefault(movingTask.getId(), 0);
-            editorUI.drawTaskIcon(graphics, movingTask, current, COL_PANEL_HEADER, (int)mouseX - 10, (int)mouseY - 10, (int)mouseX, (int)mouseY, 20);
+            editorUI.drawTaskIcon(graphics, movingTask, current, COL_PANEL_HEADER, (int) mouseX - 10, (int) mouseY - 10, (int) mouseX, (int) mouseY, 20);
         }
 
-        graphics.fill(x, hLine1Y, x + panelWidth, hLine1Y + 1, COL_UI_BORDER); // Horiz line 1
+        graphics.fill(x, hLine1Y, x + panelWidth, hLine1Y + 1, COL_UI_BORDER);
 
-        // Reverted to Truncation Logic for the main window
         String fullSubTitle = this.selectedQuest.getSubTitle();
         String displayedSubTitle = truncate(fullSubTitle, panelWidth - 20);
         int subTitleY = hLine1Y + 8;
 
-        // Hover Overlay for Subtitle (Static Multi-line Expansion)
         boolean isSubTitleHovered = mouseX >= x + 10 && mouseX <= x + panelWidth - 10 && mouseY >= subTitleY && mouseY < subTitleY + font.lineHeight;
         boolean showSubTitleOverlay = isSubTitleHovered && !fullSubTitle.equals(displayedSubTitle);
 
-        // Only draw the base text if the expansion overlay is not active
         if (!showSubTitleOverlay) {
             graphics.centeredText(this.font, Component.literal(displayedSubTitle), midX, subTitleY, COL_TEXT);
         }
 
-        // Restored fixed height for the subtitle bar
         int hLine2Y = subTitleY + 14;
-        graphics.fill(x, hLine2Y, x + panelWidth, hLine2Y + 1, COL_UI_BORDER); // Horiz line 2
+        graphics.fill(x, hLine2Y, x + panelWidth, hLine2Y + 1, COL_UI_BORDER);
 
-        // 6. Description with Vertical Scrolling
         int descAreaY = hLine2Y + 8;
-        int descAreaHeight = (y + panelHeight) - descAreaY - 10; // 10px padding at bottom
+        int descAreaHeight = (y + panelHeight) - descAreaY - 10;
         int textWidth = panelWidth - 20;
 
-        //Split text into lines to calculate total height and handle scrolling.
         var lines = this.font.split(Component.literal(this.selectedQuest.getDescription()), textWidth);
         int totalTextHeight = lines.size() * this.font.lineHeight;
 
-        //Clamp the scroll offset so we don't scroll into the void.
         this.descScrollOffset = Math.max(0, Math.min(this.descScrollOffset, Math.max(0, totalTextHeight - descAreaHeight)));
 
         graphics.enableScissor(x + 10, descAreaY, x + panelWidth - 10, y + panelHeight - 10);
 
         for (int i = 0; i < lines.size(); i++) {
-            int lineY = descAreaY + (i * this.font.lineHeight) - (int)this.descScrollOffset;
-            //Only render if the line is vertically within the scissored area.
+            int lineY = descAreaY + (i * this.font.lineHeight) - (int) this.descScrollOffset;
+
             if (lineY + this.font.lineHeight > descAreaY && lineY < y + panelHeight - 10) {
                 graphics.text(this.font, lines.get(i), x + 10, lineY, COL_TEXT);
             }
         }
         graphics.disableScissor();
 
-        // Final Pass: Tooltips (Rendered last within the window context to be on top of everything)
         if (hoveredTaskName != null && !isContextMenuOpen && !isSubEditorOpen) {
             renderSimpleTooltip(graphics, hoveredTaskName, mouseX, mouseY);
         }
@@ -3205,7 +2957,6 @@ public class QuestScreen extends Screen {
             renderSimpleTooltip(graphics, hoveredRewardLabel, mouseX, mouseY);
         }
 
-        // Final Pass for Quest Details: Render the overlay box last so it covers the description and separator line
         if (showSubTitleOverlay) {
             renderStaticTextOverlay(graphics, fullSubTitle, x + 10, subTitleY, panelWidth - 20);
         }
@@ -3213,10 +2964,9 @@ public class QuestScreen extends Screen {
 
     private String getTaskTooltip(QuestTask task) {
         String baseName = task.getTargetDisplayName();
-        
-        // FIX: If the name is just the auto-generated target name, ignore it to show the instruction instead
-        if (!task.getName().isEmpty() && !task.getName().equals("New Task") && 
-            !task.getName().equals("(Default)") && !task.getName().equals(baseName)) {
+
+        if (!task.getName().isEmpty() && !task.getName().equals("New Task") &&
+                !task.getName().equals("(Default)") && !task.getName().equals(baseName)) {
             return task.getName();
         }
 
@@ -3233,11 +2983,11 @@ public class QuestScreen extends Screen {
     }
 
     private void renderRewardLabel(GuiGraphicsExtractor graphics, QuestReward reward, int ix, int iy, int size) {
-        // If reward is null, we treat it as a bundle and show a "?"
+
         String val = (reward == null) ? "?" : (reward.getType() == QuestReward.RewardType.COMMAND ? "CMD" : String.valueOf(reward.getCount()));
         float s = 0.5f;
-        int tx = ix + (size / 2) - (int)(font.width(val) * s / 2);
-        
+        int tx = ix + (size / 2) - (int) (font.width(val) * s / 2);
+
         graphics.pose().pushMatrix();
         graphics.pose().translate(tx, iy + size + 2);
         graphics.pose().scale(s, s);
@@ -3247,7 +2997,7 @@ public class QuestScreen extends Screen {
 
     private String getRewardTooltip(QuestReward reward) {
         if (reward == null) return "";
-        return switch(reward.getType()) {
+        return switch (reward.getType()) {
             case ITEM -> {
                 String name = reward.getItem().getDefaultInstance().getHoverName().getString();
                 yield reward.getCount() + "x " + name;
@@ -3258,50 +3008,47 @@ public class QuestScreen extends Screen {
     }
 
     private void renderContextMenu(GuiGraphicsExtractor graphics) {
-        // 1. Fetch live mouse position directly from hardware
+
         Minecraft mc = Minecraft.getInstance();
         double mouseX = mc.mouseHandler.xpos() * mc.getWindow().getGuiScaledWidth() / mc.getWindow().getScreenWidth();
         double mouseY = mc.mouseHandler.ypos() * mc.getWindow().getGuiScaledHeight() / mc.getWindow().getScreenHeight();
 
         List<String> options;
         if (isSideBarContextMenu) options = List.of("Add Group", "Add Chapter");
-        else if (isSideBarEntryMenu) options = (sidebarTargetEntry instanceof SidebarGroup) ? List.of("Move", "Rename", "Reset Progress", "Delete") : List.of("Move", "Rename", "Edit Icon", "Reset Progress", "Delete");
+        else if (isSideBarEntryMenu)
+            options = (sidebarTargetEntry instanceof SidebarGroup) ? List.of("Move", "Rename", "Reset Progress", "Delete") : List.of("Move", "Rename", "Edit Icon", "Reset Progress", "Delete");
         else if (isTaskContextMenu) options = getTaskOptions();
         else if (isRewardContextMenu) options = List.of("Edit", "Delete", "Move");
         else if (isImageContextMenu) options = List.of("Move", "Delete");
         else if (isTextContextMenu) options = List.of("Edit Text", "Delete", "Move");
-        else options = (questToModify == null) ? List.of("Create Quest", "Add Text", "Add Image") : List.of("Edit", "Complete", "Delete", "Reset Progress", "Move");
+        else
+            options = (questToModify == null) ? List.of("Create Quest", "Add Text", "Add Image") : List.of("Edit", "Complete", "Delete", "Reset Progress", "Move");
 
         int w = 110;
         int h = options.size() * 20;
-        int x = (int)contextMenuX;
-        int y = (int)contextMenuY;
+        int x = (int) contextMenuX;
+        int y = (int) contextMenuY;
 
-        // 2. Draw background
         graphics.fill(x, y, x + w, y + h, COL_PANEL_HEADER);
 
-        // Draw border
         graphics.fill(x, y, x + w, y + 1, COL_UI_BORDER);
         graphics.fill(x, y + h - 1, x + w, y + h, COL_UI_BORDER);
         graphics.fill(x, y, x + 1, y + h, COL_UI_BORDER);
         graphics.fill(x + w - 1, y, x + w, y + h, COL_UI_BORDER);
 
-        // 3. Render Options with live hover detection
         for (int i = 0; i < options.size(); i++) {
             int optionY = y + (i * 20);
 
-            // Use the live mouse coordinates for check
             boolean isOptionHovered = mouseX >= x && mouseX <= x + w && mouseY >= optionY && mouseY <= optionY + 20;
 
-            // Highlight background
             if (isOptionHovered) {
                 graphics.fill(x + 1, optionY + 1, x + w - 1, optionY + 19, COL_HOVER_MENU);
             }
 
             String opt = options.get(i);
-            // Destructive actions like Delete or Reset use COL_ERROR when not hovered to provide a visual warning
-            int textColor = isOptionHovered ? COL_TEXT_GOLD : 
-                (opt.contains("Delete") || opt.contains("Reset") ? COL_ERROR : COL_TEXT);
+
+            int textColor = isOptionHovered ? COL_TEXT_GOLD :
+                    (opt.contains("Delete") || opt.contains("Reset") ? COL_ERROR : COL_TEXT);
 
             graphics.text(this.font, Component.literal(options.get(i)), x + 5, optionY + 6, textColor, false);
         }
@@ -3313,7 +3060,7 @@ public class QuestScreen extends Screen {
         this.isRewardContextMenu = true;
         this.sidebarTargetReward = reward;
 
-        this.isTaskContextMenu = false; // Reset other flags
+        this.isTaskContextMenu = false;
         this.questToModify = null;
         this.isSideBarEntryMenu = false;
         this.isSideBarContextMenu = false;
@@ -3357,44 +3104,40 @@ public class QuestScreen extends Screen {
     }
 
     private boolean isClickingContextMenu(double mouseX, double mouseY) {
-        // 1. Calculate how many options we have
+
         int optionCount;
         if (isSideBarContextMenu) optionCount = 2;
         else if (isSideBarEntryMenu) optionCount = (sidebarTargetEntry instanceof SidebarGroup) ? 4 : 5;
         else if (isTaskContextMenu) optionCount = getTaskOptions().size();
         else if (isRewardContextMenu) optionCount = 3;
         else if (isTextContextMenu) optionCount = 3;
-        // FIX: Increased from 2 to 3 to accommodate the "Add Image" option
+
         else optionCount = (questToModify == null) ? 3 : 5;
 
-        // 2. Define the exact dimensions
         int w = 110;
         int h = optionCount * 20;
 
-        // 3. Return true if inside this rectangle
         return mouseX >= contextMenuX && mouseX <= contextMenuX + w &&
                 mouseY >= contextMenuY && mouseY <= contextMenuY + h;
     }
 
     public void completeQuest(Quest quest) {
-        // Notify the server to perform completion.
-        // Server will sync back state and trigger Toasts.
+
         ClientPacketDistributor.sendToServer(new AdminCompletePayload(quest.getId(), Optional.empty(), true));
 
         playClickSound();
         updateQuestStates();
-        // Removed saveChapterData: completion status is handled by the server progress, not the chapter file.
+
     }
 
     public void claimAllRewards() {
         List<QuestReward> rewardsToClaim = new ArrayList<>();
 
         for (Quest quest : this.allQuests) {
-            // Only process quests that are completed
+
             if (quest.getState() == QuestState.COMPLETED) {
                 for (QuestReward reward : quest.getRewards()) {
-                    // Only claim if not already claimed in the client-side tracker
-                    // Skip choice bundles - they must be claimed manually
+
                     if (reward.getSubRewards().isEmpty() && !SimplyQuestsClientPacketHandler.CLIENT_CLAIMED_REWARDS.contains(reward.getId())) {
                         ClientPacketDistributor.sendToServer(new ClaimRewardPayload(reward.getId()));
                         rewardsToClaim.add(reward);
@@ -3416,13 +3159,11 @@ public class QuestScreen extends Screen {
     }
 
     public void deleteQuest(Quest quest) {
-        // FIX: Immediately clear from client-side completion cache
+
         SimplyQuestsClientPacketHandler.CLIENT_COMPLETED_QUESTS.remove(quest.getId());
-        
-        // 1. Remove from the primary list
+
         this.allQuests.remove(quest);
 
-        // 2. Remove from the lookup map
         this.questLookup.remove(quest.getId());
 
         if (this.selectedQuest == quest) this.selectedQuest = null;
@@ -3433,34 +3174,32 @@ public class QuestScreen extends Screen {
     }
 
     private void handleContextMenuClick(double mouseX, double mouseY) {
-        playClickSound(); // Play sound for ANY valid context menu selection
+        playClickSound();
         this.isContextMenuOpen = false;
 
         if (isRewardContextMenu) {
             int relativeY = (int) (mouseY - contextMenuY);
             int optionIndex = relativeY / 20;
 
-            if (optionIndex == 0) { // Edit
+            if (optionIndex == 0) {
                 this.originalReward = this.sidebarTargetReward;
                 QuestReward r = this.originalReward;
-                // Use the Copy Constructor to clone the reward and its sub-rewards
+
                 this.rewardToModify = new QuestReward(r);
-                
-                // FIX: Reset selection state so it doesn't carry over from the last reward edited
+
                 this.editorUI.selectedRewardChoiceIndex = -1;
                 this.editorUI.rewardChoicePage = 0;
-                
+
                 this.isRewardEditorOpen = true;
                 this.editorUI.isRewardModeOpen = true;
-            } else if (optionIndex == 1) { // Delete
+            } else if (optionIndex == 1) {
                 this.selectedQuest.getRewards().remove(this.sidebarTargetReward);
 
-                // Recalculate reward page bounds to prevent being stuck on an empty page
                 int maxRewardPages = (this.selectedQuest.getRewards().size() + 3) / 4;
                 if (this.rewardPage >= maxRewardPages && this.rewardPage > 0) this.rewardPage = maxRewardPages - 1;
 
                 saveChapterData(this.selectedQuest.getChapterName());
-            } else if (optionIndex == 2) { // Move
+            } else if (optionIndex == 2) {
                 this.movingReward = this.sidebarTargetReward;
             }
 
@@ -3472,7 +3211,7 @@ public class QuestScreen extends Screen {
         if (isImageContextMenu) {
             int relativeY = (int) (mouseY - contextMenuY);
             int optionIndex = relativeY / 20;
-            if (optionIndex == 0) { // Move
+            if (optionIndex == 0) {
                 this.movingCanvasImage = this.selectedCanvasImage;
                 float absoluteCenterX = (float) (this.width / 2.0);
                 float absoluteCenterY = (float) (this.height / 2.0);
@@ -3480,14 +3219,14 @@ public class QuestScreen extends Screen {
                 double worldMouseY = this.offsetY + ((contextMenuY - absoluteCenterY) / this.zoom);
                 this.dragOffsetX = worldMouseX - this.movingCanvasImage.getX();
                 this.dragOffsetY = worldMouseY - this.movingCanvasImage.getY();
-            } else if (optionIndex == 1) { // Delete
-                // Capture the filename before removing the object from the list
+            } else if (optionIndex == 1) {
+
                 String imgId = this.selectedCanvasImage.getImageId();
                 this.allCanvasImages.remove(this.selectedCanvasImage);
                 saveChapterData(this.selectedCanvasImage.getChapterName());
-                // Request server to delete the physical file
+
                 ClientPacketDistributor.sendToServer(new DeleteImagePayload(imgId));
-                // FIX: Immediately purge the image from the client's memory and disk cache
+
                 deleteLocalImageCache(imgId);
                 this.selectedCanvasImage = null;
             }
@@ -3508,7 +3247,7 @@ public class QuestScreen extends Screen {
                     this.isTaskEditorOpen = true;
                     this.editorUI.isTaskMode = true;
                     this.editorUI.currentTaskType = this.taskToModify.getType();
-                    // FIX: Initialize state from the explicit boolean field
+
                     this.tempUseAsIcon = t.isIcon();
                 } else if (action.equals("Move")) {
                     this.movingTask = this.sidebarTargetTask;
@@ -3519,7 +3258,6 @@ public class QuestScreen extends Screen {
                 } else if (action.equals("Delete")) {
                     this.selectedQuest.getTasks().remove(this.sidebarTargetTask);
 
-                    // Recalculate task page bounds to prevent being stuck on an empty page
                     int maxTaskPages = (this.selectedQuest.getTasks().size() + 3) / 4;
                     if (this.taskPage >= maxTaskPages && this.taskPage > 0) this.taskPage = maxTaskPages - 1;
 
@@ -3536,15 +3274,15 @@ public class QuestScreen extends Screen {
         if (isTextContextMenu) {
             int relativeY = (int) (mouseY - contextMenuY);
             int optionIndex = relativeY / 20;
-            if (optionIndex == 0) { // Edit
+            if (optionIndex == 0) {
                 openTextEditor(editingCanvasText);
-            } else if (optionIndex == 1) { // Delete
+            } else if (optionIndex == 1) {
                 ClientPacketDistributor.sendToServer(new DeleteCanvasTextPayload(editingCanvasText.getText(), editingCanvasText.getX(), editingCanvasText.getY(), editingCanvasText.getChapterName()));
                 allCanvasTexts.remove(editingCanvasText);
                 editingCanvasText = null;
-            } else if (optionIndex == 2) { // Move
+            } else if (optionIndex == 2) {
                 this.movingCanvasText = this.editingCanvasText;
-                // FIX: Calculate world-space offsets relative to where the context menu was opened
+
                 float absoluteCenterX = (float) (this.width / 2.0);
                 float absoluteCenterY = (float) (this.height / 2.0);
                 double worldMenuX = this.offsetX + ((contextMenuX - absoluteCenterX) / this.zoom);
@@ -3569,15 +3307,15 @@ public class QuestScreen extends Screen {
                         this.sidebarSearchQuery = group.getTitle();
                         this.sidebarTextScrollOffset = 0;
                     }
-                    case 2 -> { // Reset Progress
-                        // Send the sanitized group name so the server can match it against quest IDs
+                    case 2 -> {
+
                         ClientPacketDistributor.sendToServer(new AdminResetPayload(Optional.of(Quest.sanitizePath(group.getTitle())), Optional.empty()));
                     }
                     case 3 -> {
-                        // Delete group and all internal quests
+
                         for (SidebarChapter ch : group.getChapters()) {
                             String chId = ch.getId();
-                            // Request server-side file deletion
+
                             ClientPacketDistributor.sendToServer(new DeleteChapterPayload(chId));
 
                             allQuests.removeIf(q -> {
@@ -3590,47 +3328,45 @@ public class QuestScreen extends Screen {
                             });
                         }
                         sidebarEntries.remove(group);
-                        // Tell the server to remove the group from groups.json
+
                         ClientPacketDistributor.sendToServer(new DeleteGroupPayload(group.getName()));
                         updateQuestStates();
-                        saveGroupManifest(); // SAVE TRIGGER: Update groups.json manifest
+                        saveGroupManifest();
                     }
                 }
             } else if (sidebarTargetEntry instanceof SidebarChapter chapter) {
                 switch (optionIndex) {
-                    case 0 -> this.movingSidebarChapter = chapter; // Move
-                    case 1 -> { // Rename
+                    case 0 -> this.movingSidebarChapter = chapter;
+                    case 1 -> {
                         this.editingChapter = chapter;
                         this.sidebarSearchQuery = chapter.getName();
                         this.sidebarTextScrollOffset = 0;
                     }
-                    case 2 -> { // Edit Icon
+                    case 2 -> {
                         this.isEditingChapterIcon = true;
                         this.editorUI.isIconPickerOpen = true;
                         this.editorUI.searchQuery = "";
                         this.editorUI.scrollOffset = 0;
                     }
-                    case 3 -> { // Reset Progress
-                        // Send the internal sanitized ID so the server can find the quests
+                    case 3 -> {
+
                         ClientPacketDistributor.sendToServer(new AdminResetPayload(Optional.empty(), Optional.of(chapter.getId())));
                     }
-                    case 4 -> { // Delete
+                    case 4 -> {
                         String chapterId = chapter.getId();
 
-                        // FIX: Request server-side file deletion
                         ClientPacketDistributor.sendToServer(new DeleteChapterPayload(chapterId));
 
-                        // 1. Purge all quests belonging to this chapter from memory and the lookup map
                         allQuests.removeIf(q -> {
                             if (q.getChapterName().equals(chapterId)) {
                                 questLookup.remove(q.getId());
-                                if (this.selectedQuest != null && this.selectedQuest.getId().equals(q.getId())) this.selectedQuest = null;
+                                if (this.selectedQuest != null && this.selectedQuest.getId().equals(q.getId()))
+                                    this.selectedQuest = null;
                                 return true;
                             }
                             return false;
                         });
 
-                        // 2. Remove the chapter entry from the sidebar
                         if (sidebarTargetParentGroup != null) {
                             sidebarTargetParentGroup.getChapters().remove(chapter);
                         } else {
@@ -3640,9 +3376,8 @@ public class QuestScreen extends Screen {
                             selectedChapter = null;
                         }
 
-                        // 3. Refresh states to handle broken dependencies in other chapters
                         updateQuestStates();
-                        saveGroupManifest(); // SAVE TRIGGER: Update ordering and manifest
+                        saveGroupManifest();
                     }
                 }
             }
@@ -3655,9 +3390,9 @@ public class QuestScreen extends Screen {
             int relativeY = (int) (mouseY - contextMenuY);
             int optionIndex = relativeY / 20;
 
-            if (optionIndex == 0) { //Add Group
+            if (optionIndex == 0) {
                 SidebarGroup newGroup = new SidebarGroup("New Group", COL_TEXT);
-                // Generate a unique internal ID immediately
+
                 String uniqueId = "group_" + Long.toHexString(System.currentTimeMillis()).substring(8);
                 newGroup.setName(uniqueId);
                 this.sidebarEntries.add(newGroup);
@@ -3667,9 +3402,9 @@ public class QuestScreen extends Screen {
 
                 this.needsSidebarScrollToBottom = true;
                 if (!newGroup.isExpanded()) newGroup.toggleExpanded();
-            } else if (optionIndex == 1) { //Add Chapter
+            } else if (optionIndex == 1) {
                 SidebarChapter newChapter = new SidebarChapter("New Chapter");
-                // Generate a unique internal ID (filename) immediately
+
                 String uniqueId = "chapter_" + Long.toHexString(System.currentTimeMillis()).substring(8);
                 newChapter.setId(uniqueId);
                 this.sidebarEntries.add(newChapter);
@@ -3700,26 +3435,26 @@ public class QuestScreen extends Screen {
             double snappedX = Math.round(worldMouseX / GRID_SNAP) * GRID_SNAP;
             double snappedY = Math.round(worldMouseY / GRID_SNAP) * GRID_SNAP;
 
-            if (optionIndex == 0) { // Create Quest
+            if (optionIndex == 0) {
                 double gridX = snappedX - 12.0;
                 double gridY = snappedY - 12.0;
-                // Add short unique suffix to the ID based on current time to prevent collisions
+
                 String uniqueId = newId + "_" + Long.toHexString(System.currentTimeMillis()).substring(8);
                 this.questToModify = new Quest(uniqueId, currentChapter, "New Quest", gridX, gridY);
                 this.originalQuest = null;
                 this.isEditorOpen = true;
-            } else if (optionIndex == 1) { // Add Text
+            } else if (optionIndex == 1) {
                 CanvasText ct = new CanvasText("New Text", snappedX, snappedY, 1.0f, COL_TEXT);
                 ct.setChapterName(this.selectedChapter.getName());
                 openTextEditor(ct);
-            } else if (optionIndex == 2) { // Add Image
+            } else if (optionIndex == 2) {
                 openImagePicker(snappedX, snappedY);
             }
         } else {
-            // Handling interactions with an existing quest node
+
             switch (optionIndex) {
                 case 0 -> {
-                    // FIX: originalQuest must be the LIVE quest from the registry
+
                     this.originalQuest = this.questLookup.get(this.questToModify.getId());
                     if (this.originalQuest != null) {
                         this.originalQuest.setLockedBy(Minecraft.getInstance().player.getName().getString());
@@ -3741,17 +3476,18 @@ public class QuestScreen extends Screen {
 
     private void drawBorder(GuiGraphicsExtractor graphics, int x, int y, int w, int h, int color) {
         int thickness = 1;
-        // Top
+
         graphics.fill(x, y, x + w, y + thickness, color);
-        // Bottom
+
         graphics.fill(x, y + h - thickness, x + w, y + h, color);
-        // Left
+
         graphics.fill(x, y, x + thickness, y + h, color);
-        // Right
+
         graphics.fill(x + w - thickness, y, x + w, y + h, color);
     }
+
     private void updateSidebarScrollOffset(int availableWidth) {
-        // FIX: Use 2px buffer for the vertical bar cursor instead of full underscore width
+
         int textWidth = this.font.width(sidebarSearchQuery) + 2;
         if (textWidth > availableWidth) {
             sidebarTextScrollOffset = textWidth - availableWidth;
@@ -3761,9 +3497,9 @@ public class QuestScreen extends Screen {
     }
 
     private void renderSimpleTooltip(GuiGraphicsExtractor graphics, String text, int mouseX, int mouseY) {
-        int maxWidth = 200; // Maximum width for floating tooltips
+        int maxWidth = 200;
         var lines = this.font.split(Component.literal(text), maxWidth);
-        
+
         int textWidth = 0;
         for (var line : lines) {
             textWidth = Math.max(textWidth, this.font.width(line));
@@ -3775,24 +3511,20 @@ public class QuestScreen extends Screen {
         int boxWidth = textWidth + (padding * 2);
         int boxHeight = (lines.size() * this.font.lineHeight) + (padding);
 
-        // Ensure tooltip doesn't go off-screen
         if (boxY < 5) boxY = 5;
         if (boxY + boxHeight > this.height) boxY = this.height - boxHeight - 5;
         if (boxX + boxWidth > this.width - 5) {
             boxX = mouseX - boxWidth - 12;
         }
 
-        // 1. Background
         graphics.fill(boxX, boxY, boxX + boxWidth, boxY + boxHeight, COL_TOOLTIP_BG);
 
-        // 2. Border
         int borderColor = COL_UI_BORDER;
         graphics.fill(boxX, boxY, boxX + boxWidth, boxY + 1, borderColor);
         graphics.fill(boxX, boxY + boxHeight - 1, boxX + boxWidth, boxY + boxHeight, borderColor);
         graphics.fill(boxX, boxY, boxX + 1, boxY + boxHeight, borderColor);
         graphics.fill(boxX + boxWidth - 1, boxY, boxX + boxWidth, boxY + boxHeight, borderColor);
 
-        // 3. Render Lines
         for (int i = 0; i < lines.size(); i++) {
             graphics.text(this.font, lines.get(i), boxX + padding, boxY + 3 + (i * this.font.lineHeight), COL_TEXT);
         }
@@ -3803,11 +3535,11 @@ public class QuestScreen extends Screen {
      * This prevents mouse-relative tooltips from obscuring dependency lines.
      */
     private void renderAnchoredQuestTooltip(GuiGraphicsExtractor graphics, String text) {
-        // Calculate center of the area between the sidebar and the right edge
-        int canvasStartX = (int)this.currentSidebarWidth;
+
+        int canvasStartX = (int) this.currentSidebarWidth;
         int canvasWidth = this.width - canvasStartX;
 
-        int maxWidth = canvasWidth - 40; // Allow 20px margin on each side
+        int maxWidth = canvasWidth - 40;
         var lines = this.font.split(Component.literal(text), maxWidth);
 
         int textWidth = 0;
@@ -3820,30 +3552,26 @@ public class QuestScreen extends Screen {
         int boxHeight = (lines.size() * this.font.lineHeight) + 4;
 
         int boxX = canvasStartX + (canvasWidth - boxWidth) / 2;
-        int boxY = this.height - boxHeight - 8; // Closer to the bottom
+        int boxY = this.height - boxHeight - 8;
 
-        // 1. Background
         graphics.fill(boxX, boxY, boxX + boxWidth, boxY + boxHeight, COL_TOOLTIP_BG);
 
-        // 2. Border
         drawBorder(graphics, boxX, boxY, boxWidth, boxHeight, COL_UI_BORDER);
 
-        // 3. Render Lines
         for (int i = 0; i < lines.size(); i++) {
             graphics.centeredText(this.font, lines.get(i), boxX + (boxWidth / 2), boxY + 2 + (i * this.font.lineHeight), COL_TEXT);
         }
     }
 
     public String truncate(String text, int maxWidth) {
-        if (maxWidth < 10) return ""; // Safety floor for UI animations
+        if (maxWidth < 10) return "";
         if (this.font.width(text) <= maxWidth) return text;
 
-        // Use Minecraft's built-in efficient truncation helper
         return this.font.plainSubstrByWidth(text, maxWidth - this.font.width("...")) + "...";
     }
 
     private void renderStaticTextOverlay(GuiGraphicsExtractor graphics, String fullText, int x, int y, int containerMaxWidth) {
-        // Split text into lines to support vertical expansion in the overlay
+
         var lines = this.font.split(Component.literal(fullText), containerMaxWidth);
 
         int textWidth = 0;
@@ -3852,15 +3580,13 @@ public class QuestScreen extends Screen {
         }
 
         int padding = 4;
-        // Ensure width is clamped to absolute screen edge minus some padding
+
         int boxWidth = Math.min(textWidth + (padding * 2), this.width - x - padding);
         int boxHeight = (lines.size() * this.font.lineHeight) + (padding * 2);
 
-        // Clamp within screen/container bounds
         int finalX = x - padding;
         int finalY = y - padding;
 
-        // Thematic Opaque Background
         graphics.fill(finalX, finalY, finalX + boxWidth, finalY + boxHeight, COL_UI_INNER_BG);
 
         int borderColor = COL_UI_BORDER;
@@ -3910,8 +3636,8 @@ public class QuestScreen extends Screen {
     public Rectangle getDetailsBounds() {
         int panelWidth = 300;
         int panelHeight = 200;
-        int x = (this.popupX == -1) ? (this.width - panelWidth) / 2 : (int)this.popupX;
-        int y = (this.popupY == -1) ? (this.height - panelHeight) / 2 : (int)this.popupY;
+        int x = (this.popupX == -1) ? (this.width - panelWidth) / 2 : (int) this.popupX;
+        int y = (this.popupY == -1) ? (this.height - panelHeight) / 2 : (int) this.popupY;
         return new Rectangle(x, y, panelWidth, panelHeight);
     }
 
@@ -3934,10 +3660,8 @@ public class QuestScreen extends Screen {
             String typed = event.codepointAsString();
             char firstChar = typed.charAt(0);
 
-            // Allow digits always
             boolean isDigit = Character.isDigit(firstChar);
-            // Allow minus sign only at the start and for coordinates, not quantity
-            // Fix: Allow '-' if at the start (index 0) or if replacing text starting at the beginning (overwriting '0')
+
             boolean isMinus = firstChar == '-' && !editorUI.isQuantityOpen && (editorUI.cursorIndex == 0 || editorUI.selectionStart == 0);
 
             if (isDigit || isMinus) {
@@ -3950,7 +3674,7 @@ public class QuestScreen extends Screen {
                         charTypedInPicker(typed);
                     }
                 } else {
-                    // Coordinates have a generous 10-character limit
+
                     charTypedInPicker(typed);
                 }
             }
@@ -3959,7 +3683,7 @@ public class QuestScreen extends Screen {
 
         if (editorUI.isColorPickerOpen) {
             String typed = event.codepointAsString();
-            // Only allow valid hex characters
+
             if ("0123456789ABCDEFabcdef".contains(typed)) {
                 if (editorUI.selectionStart != -1) {
                     int start = Math.min(editorUI.selectionStart, editorUI.selectionEnd);
@@ -4000,28 +3724,22 @@ public class QuestScreen extends Screen {
     public void saveChanges() {
         if (questToModify != null) {
             if (originalQuest != null) {
-                // 1. Capture old ID and context
+
                 String oldId = originalQuest.getId();
                 String chapter = originalQuest.getChapterName();
                 String group = findGroupNameForChapter(chapter);
 
-                // FIX: Release Server Lock IMMEDIATELY using the oldId
-                originalQuest.setLockedBy(""); // Local loopback
+                originalQuest.setLockedBy("");
                 ClientPacketDistributor.sendToServer(new QuestLockPayload(oldId, false));
 
-                // 2. Only regenerate the ID if the sanitized title has actually changed.
-                // This prevents "Sanitization Drift" from changing the ID and orphaning player progress
-                // when the admin is just editing properties like dependencies or descriptions.
                 String newId = oldId;
                 if (!Quest.sanitizePath(originalQuest.getTitle()).equals(Quest.sanitizePath(questToModify.getTitle()))) {
                     List<Quest> otherQuests = allQuests.stream().filter(q -> q != originalQuest).toList();
                     newId = Quest.generateQuestId(group, chapter, questToModify.getTitle(), otherQuests);
                 }
-                
-                // 3. Update relational dependencies in other quests
+
                 if (!oldId.equals(newId)) {
-                    // Tell the server to delete the old quest ID to prevent "Zombie" duplicates
-                    // during the server-side Smart Merge
+
                     ClientPacketDistributor.sendToServer(new DeleteQuestPayload(oldId, chapter));
 
                     for (Quest q : allQuests) {
@@ -4032,17 +3750,19 @@ public class QuestScreen extends Screen {
                             }
                         }
                     }
-                    // Update registry maps
+
                     questLookup.remove(oldId);
                     questLookup.put(newId, originalQuest);
 
-                    // FIX: Also update Task IDs to use the new parent prefix
                     for (QuestTask task : originalQuest.getTasks()) {
                         task.setId(QuestTask.generateTaskId(newId, task.getName(), originalQuest.getTasks()));
                     }
+
+                    for (QuestReward reward : originalQuest.getRewards()) {
+                        reward.setId(QuestReward.generateRewardId(newId, reward.getType().name().toLowerCase(), originalQuest.getRewards()));
+                    }
                 }
 
-                // 4. Apply changes
                 originalQuest.setId(newId);
                 originalQuest.setTitle(questToModify.getTitle());
                 originalQuest.setSubTitle(questToModify.getSubTitle());
@@ -4056,20 +3776,16 @@ public class QuestScreen extends Screen {
                 originalQuest.setOptional(questToModify.isOptional());
                 originalQuest.setRepeatable(questToModify.isRepeatable());
                 originalQuest.setDependencies(questToModify.getDependencies());
-                
-                // FIX: Removed setTasks and setRewards. These are managed by 
-                // their own editors and should not be overwritten by stale clones.
-                
+
                 originalQuest.setUseTaskIcon(questToModify.isUseTaskIcon());
 
-                // If title changed, dependencies globally might be broken, save all
                 if (!oldId.equals(newId)) {
                     saveAllChapters();
                 } else {
                     saveChapterData(chapter);
                 }
             } else {
-                // NEW QUEST: Generate final ID based on the title entered in editor
+
                 String chapter = questToModify.getChapterName();
                 String group = findGroupNameForChapter(chapter);
                 String finalId = Quest.generateQuestId(group, chapter, questToModify.getTitle(), allQuests);
@@ -4079,19 +3795,20 @@ public class QuestScreen extends Screen {
                 saveChapterData(chapter);
             }
             updateQuestStates();
-        checkPendingRefresh();
+            updateClaimableCache();
+            checkPendingRefresh();
         }
         this.isEditorOpen = false;
         this.questToModify = null;
         this.originalQuest = null;
     }
 
-public void checkPendingRefresh() {
-    if (SimplyQuestsClientPacketHandler.NEEDS_REFRESH) {
-        SimplyQuestsClientPacketHandler.NEEDS_REFRESH = false;
-        this.init();
+    public void checkPendingRefresh() {
+        if (SimplyQuestsClientPacketHandler.NEEDS_REFRESH) {
+            SimplyQuestsClientPacketHandler.NEEDS_REFRESH = false;
+            this.init();
+        }
     }
-}
 
     private String findGroupNameForChapter(String chapterId) {
         for (SidebarEntry entry : this.sidebarEntries) {
@@ -4103,23 +3820,23 @@ public void checkPendingRefresh() {
                 }
             }
         }
-        return ""; // Default for standalone chapters to ensure ID consistency
+        return "";
     }
 
     public void stopSidebarEditing(boolean save) {
         if (save) {
             if (editingGroup != null && !sidebarSearchQuery.isEmpty()) {
-                // FIX: Decouple Title from ID. Update display title, keep internal ID stable.
+
                 editingGroup.setTitle(sidebarSearchQuery);
                 saveGroupManifest();
             } else if (editingChapter != null && !sidebarSearchQuery.isEmpty()) {
-                // FIX: Decouple Name from ID. Update display name, keep internal ID stable.
+
                 editingChapter.setName(sidebarSearchQuery);
                 saveGroupManifest();
                 saveChapterData(editingChapter.getId());
             }
         } else {
-            // If canceled and name was empty, we might want to remove the item
+
             if (editingGroup != null && editingGroup.getTitle().isEmpty()) {
                 sidebarEntries.remove(editingGroup);
             } else if (editingChapter != null && (editingChapter.getName().isEmpty() || editingChapter.getId() == null)) {
@@ -4156,13 +3873,11 @@ public void checkPendingRefresh() {
         double scrollableMouseY = localMouseY + sidebarScrollOffset;
         if (movingSidebarChapter == null) return;
 
-        // 1. Fully detach the chapter from its current position
         sidebarEntries.remove(movingSidebarChapter);
         sidebarEntries.forEach(e -> {
             if (e instanceof SidebarGroup g) g.getChapters().remove(movingSidebarChapter);
         });
 
-        // 2. Determine new location (Matching the ghost line logic)
         int currentYPosition = (int) (15 / textScale);
         int insertIndex = -1;
         SidebarGroup targetGroup = null;
@@ -4170,7 +3885,6 @@ public void checkPendingRefresh() {
         for (int i = 0; i < sidebarEntries.size(); i++) {
             SidebarEntry entry = sidebarEntries.get(i);
 
-            // Check if dropping into the root gap above this entry
             if (scrollableMouseY < currentYPosition + 4) {
                 insertIndex = i;
                 break;
@@ -4179,7 +3893,7 @@ public void checkPendingRefresh() {
             if (entry instanceof SidebarGroup group) {
                 currentYPosition += 18;
                 if (group.isExpanded()) {
-                    // Allow dropping into an empty expanded group
+
                     if (group.getChapters().isEmpty()) {
                         if (scrollableMouseY < currentYPosition + 16) {
                             targetGroup = group;
@@ -4188,11 +3902,11 @@ public void checkPendingRefresh() {
                         }
                     }
                     for (SidebarChapter chapter : group.getChapters()) {
-                        // If mouse is over this chapter row
+
                         if (scrollableMouseY < currentYPosition + 16) {
                             targetGroup = group;
                             int idx = group.getChapters().indexOf(chapter);
-                            // Top half = before, Bottom half = after
+
                             insertIndex = (scrollableMouseY < currentYPosition + 8) ? idx : idx + 1;
                             break;
                         }
@@ -4201,9 +3915,9 @@ public void checkPendingRefresh() {
                     if (targetGroup != null) break;
                 }
             } else {
-                // Check if dropping over a standalone chapter
+
                 if (scrollableMouseY < currentYPosition + 16) {
-                    // Top half = before, Bottom half = after
+
                     insertIndex = (scrollableMouseY < currentYPosition + 8) ? i : i + 1;
                     break;
                 } else {
@@ -4213,11 +3927,10 @@ public void checkPendingRefresh() {
             currentYPosition += 6;
         }
 
-        // 3. Perform insertion
         if (targetGroup != null) {
             targetGroup.getChapters().add(insertIndex, movingSidebarChapter);
         } else {
-            // If insertIndex is still -1, it goes to the bottom of the root list
+
             if (insertIndex == -1) sidebarEntries.add(movingSidebarChapter);
             else sidebarEntries.add(insertIndex, movingSidebarChapter);
         }
@@ -4239,7 +3952,6 @@ public void checkPendingRefresh() {
         for (int i = 0; i < sidebarEntries.size(); i++) {
             SidebarEntry entry = sidebarEntries.get(i);
 
-            // Groups can only be root items, so we only care about root list indices
             if (scrollableMouseY < currentYPosition + 4) {
                 insertIndex = i;
                 break;
@@ -4266,7 +3978,7 @@ public void checkPendingRefresh() {
             this.taskToModify = null;
             this.originalTask = null;
             this.editorUI.isTaskMode = false;
-            this.editorUI.closePicker(); // Ensure sub-pickers are also closed
+            this.editorUI.closePicker();
             playClickSound();
         }
         if (field.equals("Optional")) {
@@ -4279,26 +3991,29 @@ public void checkPendingRefresh() {
             taskToModify.setConsume(!taskToModify.isConsume());
             playClickSound();
         } else if (field.equals("Quantity")) {
-            editorUI.closePicker(); // Close others first
+            editorUI.closePicker();
             editorUI.searchQuery = String.valueOf(taskToModify.getRequiredAmount());
             editorUI.isQuantityOpen = true;
             editorUI.cursorIndex = editorUI.searchQuery.length();
-            // Highlight the number so it can be overwritten immediately
-            editorUI.selectionStart = 0; editorUI.selectionEnd = editorUI.searchQuery.length();
+
+            editorUI.selectionStart = 0;
+            editorUI.selectionEnd = editorUI.searchQuery.length();
             playClickSound();
         } else if (field.equals("Name")) {
             editorUI.closePicker();
             editorUI.searchQuery = taskToModify.getName();
             editorUI.isNameOpen = true;
             editorUI.cursorIndex = editorUI.searchQuery.length();
-            editorUI.selectionStart = 0; editorUI.selectionEnd = editorUI.searchQuery.length();
+            editorUI.selectionStart = 0;
+            editorUI.selectionEnd = editorUI.searchQuery.length();
             playClickSound();
         } else if (field.equals("X") || field.equals("Y") || field.equals("Z")) {
             editorUI.closePicker();
             editorUI.searchQuery = String.valueOf(field.equals("X") ? taskToModify.getTargetX() : (field.equals("Y") ? taskToModify.getTargetY() : taskToModify.getTargetZ()));
             editorUI.isXOpen = field.equals("X");
             editorUI.cursorIndex = editorUI.searchQuery.length();
-            editorUI.selectionStart = 0; editorUI.selectionEnd = editorUI.searchQuery.length();
+            editorUI.selectionStart = 0;
+            editorUI.selectionEnd = editorUI.searchQuery.length();
             playClickSound();
         } else if (field.equals("Type")) {
             editorUI.isTypePickerOpen = true;
@@ -4310,14 +4025,12 @@ public void checkPendingRefresh() {
         }
     }
 
-    // Helper for charTyped to reuse logic
     private void charTypedInPicker(String newChar) {
-        // Handle Selection replacement
+
         if (editorUI.selectionStart != -1 && editorUI.selectionEnd != -1) {
             int start = Math.min(editorUI.selectionStart, editorUI.selectionEnd);
             int end = Math.max(editorUI.selectionStart, editorUI.selectionEnd);
 
-            // Ensure indices are within current string bounds (prevents crashes from stale state)
             start = Math.max(0, Math.min(start, editorUI.searchQuery.length()));
             end = Math.max(0, Math.min(end, editorUI.searchQuery.length()));
 
@@ -4326,8 +4039,9 @@ public void checkPendingRefresh() {
             editorUI.selectionStart = -1;
             editorUI.selectionEnd = -1;
         } else {
-            // Normal character insertion
-            if (editorUI.cursorIndex > editorUI.searchQuery.length()) editorUI.cursorIndex = editorUI.searchQuery.length();
+
+            if (editorUI.cursorIndex > editorUI.searchQuery.length())
+                editorUI.cursorIndex = editorUI.searchQuery.length();
             editorUI.searchQuery = editorUI.searchQuery.substring(0, editorUI.cursorIndex) + newChar + editorUI.searchQuery.substring(editorUI.cursorIndex);
             editorUI.cursorIndex++;
         }
@@ -4340,6 +4054,7 @@ public void checkPendingRefresh() {
             }
         });
     }
+
     public void updateTaskNameAndId(String newName) {
         if (this.selectedQuest != null && this.taskToModify != null) {
             this.taskToModify.setName(newName);
@@ -4357,7 +4072,7 @@ public void checkPendingRefresh() {
         if (this.selectedQuest == null || this.movingTask == null) return;
 
         int panelWidth = 300;
-        int x = (this.popupX == -1) ? (this.width - panelWidth) / 2 : (int)this.popupX;
+        int x = (this.popupX == -1) ? (this.width - panelWidth) / 2 : (int) this.popupX;
         int tasksAreaX = x + 10;
         int slotSize = 20;
         int maxVisibleTasks = 4;
@@ -4403,7 +4118,6 @@ public void checkPendingRefresh() {
         double worldMouseX = this.offsetX + ((mouseX - absoluteCenterX) / this.zoom);
         double worldMouseY = this.offsetY + ((mouseY - absoluteCenterY) / this.zoom);
 
-        // FIX: Use offsets during drop calculation to maintain relative position
         double targetX = worldMouseX - this.dragOffsetX;
         double targetY = worldMouseY - this.dragOffsetY;
 
@@ -4441,7 +4155,6 @@ public void checkPendingRefresh() {
     public void saveChapterData(String chapterName) {
         SidebarChapter targetChapter = null;
 
-        // 1. Search by internal ID (chapterName here is the sanitized ID passed from Quest objects)
         for (SidebarEntry entry : this.sidebarEntries) {
             if (entry instanceof SidebarChapter ch && ch.getId().equals(chapterName)) {
                 targetChapter = ch;
@@ -4454,10 +4167,9 @@ public void checkPendingRefresh() {
             if (targetChapter != null) break;
         }
 
-        // 2. Perform the save if the chapter was found
         if (targetChapter != null) {
             final String finalChapterId = targetChapter.getId();
-            // Calculate live ordering metadata
+
             int groupOrder = -1;
             int chapterOrder = 0;
             int groupColor = COL_TEXT;
@@ -4473,15 +4185,15 @@ public void checkPendingRefresh() {
                     if (chIdx != -1) {
                         groupOrder = i;
                         chapterOrder = chIdx;
-                        // FIX: Use the internal ID for ID consistency
+
                         groupName = group.getName();
                         break;
                     }
                 }
             }
 
-            String prettyTitle = targetChapter.getName(); // The display title
-            String sanitizedId = targetChapter.getId();   // The internal ID
+            String prettyTitle = targetChapter.getName();
+            String sanitizedId = targetChapter.getId();
             QuestChapter data = new QuestChapter(groupName, groupOrder, groupColor, sanitizedId, prettyTitle, chapterOrder,
                     targetChapter.getIconStack().getItem(),
                     new ArrayList<>(allQuests.stream().filter(q -> q.getChapterName().equals(finalChapterId)).toList()),
@@ -4491,17 +4203,16 @@ public void checkPendingRefresh() {
                     targetChapter.getOffsetY(),
                     targetChapter.getZoom());
 
-            // Send the entire chapter object to the server to be saved
             ClientPacketDistributor.sendToServer(new SaveChapterPayload(data));
         }
     }
 
     /**
-     * Performs a full database save. 
+     * Performs a full database save.
      * Mandatory after renaming Chapters or Groups to fix global dependency IDs.
      */
     public void saveAllChapters() {
-        // 1. Rewrite every chapter file (updates Quest IDs and Dependencies on disk)
+
         for (SidebarEntry entry : sidebarEntries) {
             if (entry instanceof SidebarChapter ch) {
                 saveChapterData(ch.getId());
@@ -4511,7 +4222,7 @@ public void checkPendingRefresh() {
                 }
             }
         }
-        // 2. Sync the sidebar structure
+
         saveGroupManifest();
     }
 
@@ -4527,11 +4238,11 @@ public void checkPendingRefresh() {
             SidebarEntry entry = sidebarEntries.get(i);
             if (entry instanceof SidebarGroup group) {
                 List<String> chaptersInGroup = group.getChapters().stream()
-                        .map(SidebarChapter::getId) // IMPORTANT: Send the internal ID
+                        .map(SidebarChapter::getId)
                         .toList();
 
                 groupData.add(new QuestGroup(
-                        group.getName(), // FIX: User internal ID as the key
+                        group.getName(),
                         group.getTitle(),
                         group.getTitleColor(),
                         i,
@@ -4539,7 +4250,7 @@ public void checkPendingRefresh() {
                         chaptersInGroup
                 ));
             } else if (entry instanceof SidebarChapter chapter) {
-                rootChapters.add(new SaveGroupsPayload.StandaloneChapterInfo(chapter.getId(), i)); // IMPORTANT: Send internal ID
+                rootChapters.add(new SaveGroupsPayload.StandaloneChapterInfo(chapter.getId(), i));
             }
         }
 
@@ -4565,12 +4276,11 @@ public void checkPendingRefresh() {
         var completedIds = SimplyQuestsClientPacketHandler.CLIENT_COMPLETED_QUESTS;
 
         for (Quest quest : allQuests) {
-            // Sync individual task counts into the local objects
+
             for (QuestTask task : quest.getTasks()) {
                 int current = taskMap.getOrDefault(task.getId(), 0);
                 task.setCurrentAmount(current);
 
-                // FIX: Update task state based on current progress so icons reflect completion
                 if (current >= task.getRequiredAmount()) task.setState(QuestTask.TaskState.COMPLETE);
                 else if (current > 0) task.setState(QuestTask.TaskState.PARTIAL);
                 else task.setState(QuestTask.TaskState.INCOMPLETE);
@@ -4590,7 +4300,6 @@ public void checkPendingRefresh() {
         int x = (this.width - boxW) / 2;
         int y = (this.height - boxH) / 2;
 
-        // Dim Background
         graphics.fill(0, 0, this.width, this.height, COL_DIM);
 
         graphics.fill(x, y, x + boxW, y + boxH, COL_UI_BG);
@@ -4601,7 +4310,7 @@ public void checkPendingRefresh() {
         int currentAmount = SimplyQuestsClientPacketHandler.CLIENT_TASK_PROGRESS.getOrDefault(submittingTask.getId(), 0);
         boolean isHovered = mouseX >= x + (boxW / 2) - 10 && mouseX <= x + (boxW / 2) + 10 && mouseY >= y + 25 && mouseY <= y + 45;
         int innerColor = isHovered ? COL_PANEL_HEADER : COL_UI_BG;
-        // Icon
+
         editorUI.drawTaskIcon(graphics, submittingTask, currentAmount, innerColor, x + (boxW / 2) - 10, y + 25, mouseX, mouseY, 20);
 
         String progress = currentAmount + " / " + submittingTask.getRequiredAmount();
@@ -4611,13 +4320,11 @@ public void checkPendingRefresh() {
         int btnH = 16;
         int btnY = y + boxH - 25;
 
-        // Cancel Button
         int cancelX = x + 20;
         int cancelColor = editorUI.getButtonColor(mouseX, mouseY, cancelX, btnY, btnW, btnH, COL_BUTTON_BASE);
         graphics.fill(cancelX, btnY, cancelX + btnW, btnY + btnH, cancelColor);
         graphics.centeredText(font, Component.literal("Cancel"), cancelX + btnW / 2, btnY + 4, COL_TEXT);
 
-        // Submit Button
         int submitX = x + boxW - 20 - btnW;
         int submitColor = editorUI.getButtonColor(mouseX, mouseY, submitX, btnY, btnW, btnH, COL_BUTTON_BASE);
         graphics.fill(submitX, btnY, submitX + btnW, btnY + btnH, submitColor);
@@ -4633,15 +4340,12 @@ public void checkPendingRefresh() {
         int btnH = 16;
         int btnY = y + boxH - 25;
 
-        // Cancel
         if (mouseX >= x + 20 && mouseX <= x + 20 + btnW && mouseY >= btnY && mouseY <= btnY + btnH) {
             this.isItemSubmissionOpen = false;
             this.submittingTask = null;
             playClickSound();
-        }
-        // Submit
-        else if (mouseX >= x + boxW - 20 - btnW && mouseX <= x + boxW - 20 && mouseY >= btnY && mouseY <= btnY + btnH) {
-            // Correct NeoForge 26.1 Static API for sending to server
+        } else if (mouseX >= x + boxW - 20 - btnW && mouseX <= x + boxW - 20 && mouseY >= btnY && mouseY <= btnY + btnH) {
+
             ClientPacketDistributor.sendToServer(new SubmitItemTaskPayload(selectedQuest.getId(), submittingTask.getId()));
             this.isItemSubmissionOpen = false;
             this.submittingTask = null;
@@ -4651,7 +4355,7 @@ public void checkPendingRefresh() {
 
     private void openTextEditor(CanvasText ct) {
         this.originalCanvasText = ct;
-        // Simple clone for "Cancel" functionality
+
         this.editingCanvasText = new CanvasText(ct.getText(), ct.getX(), ct.getY(), ct.getScale(), ct.getColor());
         this.editingCanvasText.setChapterName(ct.getChapterName());
         this.editorUI.searchQuery = ct.getText();
@@ -4663,7 +4367,7 @@ public void checkPendingRefresh() {
 
     private void renderCanvasTextEditor(GuiGraphicsExtractor graphics, int mouseX, int mouseY) {
         int windowWidth = 200;
-        int windowHeight = 145; // Increased to fit Color row
+        int windowHeight = 145;
         int x = (this.width - windowWidth) / 2;
         int y = (this.height - windowHeight) / 2;
 
@@ -4671,40 +4375,33 @@ public void checkPendingRefresh() {
         drawBorder(graphics, x, y, windowWidth, windowHeight, COL_UI_BORDER);
         graphics.centeredText(font, Component.literal("Edit Canvas Text"), x + windowWidth / 2, y + 10, COL_TEXT);
 
-        // Text Input Row
         graphics.text(font, "Text:", x + 15, y + 35, COL_TEXT);
         editorUI.drawEditableText(graphics, editorUI.searchQuery, x + 50, y + 33, 135, 14, false);
 
-        // Scale Row
         graphics.text(font, "Scale:", x + 15, y + 60, COL_TEXT);
         String scaleText = String.format("%.1fx", editingCanvasText.getScale());
         graphics.text(font, scaleText, x + 55, y + 60, COL_TEXT);
 
-        // --- SLIDER LOGIC ---
         int sliderX = x + 90;
         int sliderW = 95;
         int sliderY = y + 64;
 
         float progress = (editingCanvasText.getScale() - 0.5f) / (5.0f - 0.5f);
 
-        // Track
         graphics.fill(sliderX, sliderY, sliderX + sliderW, sliderY + 2, COL_INPUT_BG);
-        graphics.fill(sliderX, sliderY, sliderX + (int)(progress * sliderW), sliderY + 2, COL_SLIDER_TRACK);
+        graphics.fill(sliderX, sliderY, sliderX + (int) (progress * sliderW), sliderY + 2, COL_SLIDER_TRACK);
 
-        // Handle
-        int handleX = sliderX + (int)(progress * sliderW);
+        int handleX = sliderX + (int) (progress * sliderW);
         graphics.fill(handleX - 2, sliderY - 3, handleX + 2, sliderY + 5, COL_UI_BORDER);
 
-        // Color Row
         graphics.text(font, "Color:", x + 15, y + 85, COL_TEXT);
-        // Preview box
+
         graphics.fill(x + 55, y + 83, x + 55 + 35, y + 83 + 12, COL_INPUT_BG);
         graphics.fill(x + 56, y + 84, x + 55 + 34, y + 83 + 11, editingCanvasText.getColor());
         graphics.outline(x + 55, y + 83, 35, 12, COL_UI_BORDER);
 
         editorUI.drawButton(graphics, mouseX, mouseY, x + 100, y + 82, 70, 14, "Change", COL_BUTTON_BASE);
 
-        // Footer Buttons
         int btnY = y + windowHeight - 20;
         int btnW = 45;
         int cancelX = x + windowWidth - 110;
@@ -4719,7 +4416,6 @@ public void checkPendingRefresh() {
         graphics.fill(saveX, btnY, saveX + btnW, btnY + 14, saveColor);
         graphics.centeredText(font, Component.literal("Save"), saveX + btnW / 2, btnY + 3, COL_TEXT);
 
-        // Render Color Picker Popup LAST to ensure it is on top of footer buttons
         if (editorUI.isColorPickerOpen) {
             int pickerWidth = 135;
             QuestEditorUI.PickerBounds b = new QuestEditorUI.PickerBounds(this.pickerX, this.pickerY, pickerWidth, 168, 16);
@@ -4740,19 +4436,17 @@ public void checkPendingRefresh() {
         int x = (this.width - windowWidth) / 2;
         int y = (this.height - windowHeight) / 2;
 
-        // --- Color Picker Logic (Priority) ---
         QuestEditorUI.PickerBounds pBounds = new QuestEditorUI.PickerBounds(this.pickerX, this.pickerY, 135, 168, 16);
         boolean insidePicker = editorUI.isColorPickerOpen && mouseX >= pBounds.x() && mouseX <= pBounds.x() + pBounds.w() && mouseY >= pBounds.y() && mouseY <= pBounds.y() + pBounds.h();
 
         if (editorUI.isColorPickerOpen) {
             if (insidePicker) {
-                // Check for "Submit" button click
+
                 if (mouseX >= pBounds.x() + 5 && mouseX <= pBounds.x() + pBounds.w() - 5 && mouseY >= pBounds.y() + pBounds.h() - 18 && mouseY <= pBounds.y() + pBounds.h() - 4) {
                     commitPickerColor();
                     return;
                 }
 
-                // Check for Header Dragging (Top 16 pixels)
                 if (mouseY < pBounds.y() + 16) {
                     this.isDraggingPickerWindow = true;
                     this.dragOffsetX = mouseX - pBounds.x();
@@ -4760,11 +4454,10 @@ public void checkPendingRefresh() {
                     return;
                 }
 
-                // Handle Color Wheel interaction
                 handlePickerColorChange(mouseX, mouseY, pBounds, null);
                 return;
             } else {
-                // Clicked outside the picker, check if we also clicked outside the main editor
+
                 boolean insideMain = mouseX >= x && mouseX <= x + windowWidth && mouseY >= y && mouseY <= y + windowHeight;
                 if (insideMain) {
                     editorUI.isColorPickerOpen = false;
@@ -4773,7 +4466,6 @@ public void checkPendingRefresh() {
             }
         }
 
-        // Main Editor Bounds Check
         boolean insideMain = mouseX >= x && mouseX <= x + windowWidth && mouseY >= y && mouseY <= y + windowHeight;
         if (!insideMain) {
             editorUI.closePicker();
@@ -4783,14 +4475,12 @@ public void checkPendingRefresh() {
             return;
         }
 
-        // Click inside the text box of the Canvas Text Editor to clear highlight
         if (mouseX >= x + 50 && mouseX <= x + 185 && mouseY >= y + 33 && mouseY <= y + 47) {
             editorUI.selectionStart = -1;
             editorUI.selectionEnd = -1;
             return;
         }
 
-        // Scale Slider Check
         int sliderX = x + 90;
         int sliderW = 95;
         if (mouseX >= sliderX - 2 && mouseX <= sliderX + sliderW + 2 && mouseY >= y + 60 && mouseY <= y + 70) {
@@ -4798,12 +4488,11 @@ public void checkPendingRefresh() {
             return;
         }
 
-        // Color Picker Toggle Button
         if (mouseX >= x + 100 && mouseX <= x + 170 && mouseY >= y + 82 && mouseY <= y + 96) {
             editorUI.isColorPickerOpen = !editorUI.isColorPickerOpen;
             if (editorUI.isColorPickerOpen) {
                 this.pendingPickerColor = editingCanvasText.getColor();
-                // Spawn picker next to the button and clamp to screen
+
                 int pW = 135;
                 int pH = 168;
                 this.pickerX = x + 180;
@@ -4815,14 +4504,13 @@ public void checkPendingRefresh() {
         }
 
         int btnY = y + windowHeight - 20;
-        // Cancel/Save buttons
+
         if (mouseX >= x + windowWidth - 110 && mouseX <= x + windowWidth - 110 + 45 && mouseY >= btnY && mouseY <= btnY + 14) {
             editorUI.closePicker();
             isTextEditorOpen = false;
             editingCanvasText = null;
             originalCanvasText = null;
-        }
-        else if (mouseX >= x + windowWidth - 60 && mouseX <= x + windowWidth - 60 + 45 && mouseY >= btnY && mouseY <= btnY + 14) {
+        } else if (mouseX >= x + windowWidth - 60 && mouseX <= x + windowWidth - 60 + 45 && mouseY >= btnY && mouseY <= btnY + 14) {
             editingCanvasText.setText(editorUI.searchQuery);
             if (allCanvasTexts.contains(originalCanvasText)) {
                 int index = allCanvasTexts.indexOf(originalCanvasText);
@@ -4845,18 +4533,16 @@ public void checkPendingRefresh() {
         int alphaLabelY = hexY + 16;
         int alphaY = alphaLabelY + 12;
 
-        // Check for hex box click using dynamic offsets
         if (mouseX >= b.x() + 35 && mouseX <= b.x() + 100 && mouseY >= pickerY + 70 + 8 && mouseY <= pickerY + 70 + 8 + 12) {
             editorUI.isHexEditing = true;
             editorUI.hexQuery = String.format("%06X", (this.pendingPickerColor & 0xFFFFFF));
             editorUI.hexCursorIndex = editorUI.hexQuery.length();
             playClickSound();
         } else {
-            // Use content-aware mouse detection for Square, Hue, and Alpha
+
             boolean clickingSB = mouseX >= b.x() + 5 && mouseX <= b.x() + 75 && mouseY >= pickerY && mouseY <= pickerY + 70;
             boolean clickingHue = mouseX >= b.x() + 80 && mouseX <= b.x() + 92 && mouseY >= pickerY && mouseY <= pickerY + 70;
 
-            // Use the full width for the slider hitbox
             int sliderW = b.w() - 10;
             boolean clickingAlpha = mouseX >= b.x() + 5 && mouseX <= b.x() + 5 + sliderW && mouseY >= alphaY && mouseY <= alphaY + 10;
 
@@ -4930,7 +4616,6 @@ public void checkPendingRefresh() {
             editorUI.drawButton(graphics, mouseX, mouseY, rowX + 140, rowY + 2, 40, 14, "Edit", COL_BUTTON_BASE);
         }
 
-        // --- 3. ADD GRID SIZE SLIDER ROW ---
         int nextIdx = CONFIG_ITEM_MAP.length;
         int col = nextIdx % 2;
         int row = nextIdx / 2;
@@ -4946,11 +4631,9 @@ public void checkPendingRefresh() {
 
             float progress = (float) ((GRID_SNAP - 4.0) / (32.0 - 4.0));
 
-            // Track
             graphics.fill(sliderX, sliderY, sliderX + sliderW, sliderY + 2, COL_INPUT_BG);
             graphics.fill(sliderX, sliderY, sliderX + (int) (progress * sliderW), sliderY + 2, COL_SLIDER_TRACK);
 
-            // Handle
             int handleX = sliderX + (int) (progress * sliderW);
             graphics.fill(handleX - 2, sliderY - 3, handleX + 2, sliderY + 5, COL_UI_BORDER);
 
@@ -4958,18 +4641,15 @@ public void checkPendingRefresh() {
             graphics.text(font, valText, sliderX + sliderW + 5, rowY + 5, COL_TEXT);
         }
 
-        // FIX: Disable the list scissor AFTER the loop and grid row check, but BEFORE footer/pickers
         graphics.disableScissor();
 
         int footerY = y + windowHeight - 20;
-        // Align Reset button to the left margin
+
         editorUI.drawButton(graphics, mouseX, mouseY, x + 10, footerY, 100, 14, "Reset Defaults", COL_BUTTON_BASE);
 
-        // Save & Close: Widened to 120 and aligned to the right margin
         int saveX = x + windowWidth - 130;
         editorUI.drawButton(graphics, mouseX, mouseY, saveX, footerY, 120, 14, "Save & Close", COL_BUTTON_BASE);
 
-        // Render Picker LAST in Settings pass
         if (editorUI.isColorPickerOpen) {
             int pickerWidth = 135;
             QuestEditorUI.PickerBounds b = new QuestEditorUI.PickerBounds(this.pickerX, this.pickerY, pickerWidth, 168, 16);
@@ -4990,13 +4670,12 @@ public void checkPendingRefresh() {
         int x = (this.width - windowWidth) / 2;
         int y = (this.height - windowHeight) / 2;
 
-        // --- Color Picker Logic ---
         QuestEditorUI.PickerBounds pBounds = new QuestEditorUI.PickerBounds(this.pickerX, this.pickerY, 135, 168, 16);
         boolean insidePicker = editorUI.isColorPickerOpen && mouseX >= pBounds.x() && mouseX <= pBounds.x() + pBounds.w() && mouseY >= pBounds.y() && mouseY <= pBounds.y() + pBounds.h();
 
         if (editorUI.isColorPickerOpen) {
             if (insidePicker) {
-                // Check for Header Dragging
+
                 if (mouseY < pBounds.y() + 16) {
                     this.isDraggingPickerWindow = true;
                     this.dragOffsetX = mouseX - pBounds.x();
@@ -5011,7 +4690,7 @@ public void checkPendingRefresh() {
                 handlePickerColorChange(mouseX, mouseY, pBounds, editingConfigColor);
                 return;
             } else {
-                // Clicked outside picker, but check if we are inside main before closing
+
                 if (mouseX >= x && mouseX <= x + windowWidth && mouseY >= y && mouseY <= y + windowHeight) {
                     editorUI.isColorPickerOpen = false;
                     playClickSound();
@@ -5039,7 +4718,6 @@ public void checkPendingRefresh() {
                 this.pendingPickerColor = getConfigValueByName(editingConfigColor);
                 editorUI.isColorPickerOpen = true;
 
-                // Position picker next to the clicked row and clamp to screen
                 int pW = 135;
                 int pH = 168;
                 this.pickerX = rowX + 190;
@@ -5052,7 +4730,6 @@ public void checkPendingRefresh() {
             }
         }
 
-        // Check for Grid Slider click
         int nextIdx = CONFIG_ITEM_MAP.length;
         int col = nextIdx % 2;
         int row = nextIdx / 2;
@@ -5067,8 +4744,7 @@ public void checkPendingRefresh() {
         if (mouseX >= x + 10 && mouseX <= x + 110 && mouseY >= footerY && mouseY <= footerY + 14) {
             resetThemeToDefaults();
             playClickSound();
-        }
-        else if (mouseX >= x + windowWidth - 130 && mouseX <= x + windowWidth - 10 && mouseY >= footerY && mouseY <= footerY + 14) {
+        } else if (mouseX >= x + windowWidth - 130 && mouseX <= x + windowWidth - 10 && mouseY >= footerY && mouseY <= footerY + 14) {
             isSettingsOpen = false;
             editorUI.closePicker();
             saveThemeToConfig();
@@ -5076,7 +4752,7 @@ public void checkPendingRefresh() {
     }
 
     private void clampPickerPosition(int pW, int pH) {
-        // Ensure picker doesn't go off the left/top or right/bottom edges
+
         this.pickerX = (int) Math.max(0, Math.min(this.width - pW, this.pickerX));
         this.pickerY = (int) Math.max(0, Math.min(this.height - pH, this.pickerY));
     }
@@ -5094,13 +4770,15 @@ public void checkPendingRefresh() {
             editorUI.searchQuery = String.valueOf(rewardToModify.getCount());
             editorUI.isQuantityOpen = true;
             editorUI.cursorIndex = editorUI.searchQuery.length();
-            editorUI.selectionStart = 0; editorUI.selectionEnd = editorUI.searchQuery.length();
+            editorUI.selectionStart = 0;
+            editorUI.selectionEnd = editorUI.searchQuery.length();
             playClickSound();
         } else if (field.equals("Command")) {
             editorUI.searchQuery = rewardToModify.getCommand();
-            editorUI.isNameOpen = true; // Reuse isNameOpen for single-line command editing
+            editorUI.isNameOpen = true;
             editorUI.cursorIndex = editorUI.searchQuery.length();
-            editorUI.selectionStart = 0; editorUI.selectionEnd = editorUI.searchQuery.length();
+            editorUI.selectionStart = 0;
+            editorUI.selectionEnd = editorUI.searchQuery.length();
             playClickSound();
         }
     }
@@ -5218,7 +4896,7 @@ public void checkPendingRefresh() {
         COL_ERROR = 0xFFFF5555;
         COL_STATE_LOCKED = 0xFF505050;
         COL_STATE_AVAILABLE = 0xFFB0B0B0;
-        COL_STATE_PARTIAL = 0xFF55FFFF; // Brighter Sky Blue
+        COL_STATE_PARTIAL = 0xFF55FFFF;
         COL_STATE_COMPLETED = 0xFF55FF55;
         COL_SELECTION = 0x883399FF;
         COL_GRID = 0x0DFFFFFF;
@@ -5227,8 +4905,8 @@ public void checkPendingRefresh() {
         COL_HOVER_MENU = 0x55FFFFFF;
         COL_TOOLTIP_BG = 0xF0101015;
         COL_SLIDER_TRACK = 0xFFAAAAAA;
-        COL_GHOST_BORDER = 0x80505050; // Replaces previous (LOCKED | 0x80)
-        COL_GHOST_FILL = 0x40FFFFFF;   // Replaces previous (BORDER | 0x40)
+        COL_GHOST_BORDER = 0x80505050;
+        COL_GHOST_FILL = 0x40FFFFFF;
         GRID_SNAP = 16.0;
     }
 
@@ -5268,7 +4946,7 @@ public void checkPendingRefresh() {
         for (Quest q : this.allQuests) {
             if (q.getChapterName().equals(chapterName) && q.getState() == QuestState.COMPLETED) {
                 for (QuestReward r : q.getRewards()) {
-                    // Badge shows for ANY unclaimed reward, including choices
+
                     if (!SimplyQuestsClientPacketHandler.CLIENT_CLAIMED_REWARDS.contains(r.getId())) return true;
                 }
             }
@@ -5295,40 +4973,36 @@ public void checkPendingRefresh() {
      * Called only when player data actually changes.
      */
     public static void updateClaimableCache() {
-        // FIX: Pull from the Client Cache
-        Map<Identifier, QuestChapter> chapterMap = SimplyQuestsClientPacketHandler.getChapters();
+        Collection<Quest> questsToProcess;
+        Minecraft mc = Minecraft.getInstance();
 
-        if (chapterMap == null || chapterMap.isEmpty()) {
-            anyClaimableCache = false;
-            anyUnclaimedGeneralCache = false;
-            return;
-        }
-
-        // Temporary variables to hold calculation
         boolean foundClaimable = false;
         boolean foundUnclaimed = false;
 
-        // Iterate through the values of the Map (the QuestChapter objects)
-        for (QuestChapter chapter : chapterMap.values()) {
-            for (Quest quest : chapter.getQuests()) {
-                if (SimplyQuestsClientPacketHandler.CLIENT_COMPLETED_QUESTS.contains(quest.getId())) {
-                    for (QuestReward reward : quest.getRewards()) {
-                        boolean claimed = SimplyQuestsClientPacketHandler.CLIENT_CLAIMED_REWARDS.contains(reward.getId());
-                        if (!claimed) {
-                            foundUnclaimed = true;
-                            // "Claim All" logic applies ONLY to non-choice rewards
-                            if (reward.getSubRewards().isEmpty()) {
-                                foundClaimable = true;
-                            }
+        if (mc.screen instanceof QuestScreen screen && screen.allQuests != null && !screen.allQuests.isEmpty()) {
+            questsToProcess = screen.allQuests;
+        } else {
+
+            questsToProcess = new ArrayList<>(SimplyQuestsClientPacketHandler.getChapters().values()).stream()
+                    .flatMap(c -> c.getQuests().stream()).toList();
+        }
+
+        for (Quest quest : questsToProcess) {
+            if (SimplyQuestsClientPacketHandler.CLIENT_COMPLETED_QUESTS.contains(quest.getId())) {
+                for (QuestReward reward : quest.getRewards()) {
+                    boolean claimed = SimplyQuestsClientPacketHandler.CLIENT_CLAIMED_REWARDS.contains(reward.getId());
+                    if (!claimed) {
+                        foundUnclaimed = true;
+
+                        if (reward.getSubRewards().isEmpty()) {
+                            foundClaimable = true;
                         }
                     }
                 }
-                if (foundClaimable && foundUnclaimed) break;
             }
             if (foundClaimable && foundUnclaimed) break;
         }
 
-        // Apply the results to the static caches
         anyClaimableCache = foundClaimable;
         anyUnclaimedGeneralCache = foundUnclaimed;
     }
@@ -5336,14 +5010,12 @@ public void checkPendingRefresh() {
     private boolean checkPermissions() {
         if (this.minecraft.player == null) return false;
 
-        // 1. Check the Integrated Server (Works for Single-player and LAN hosts)
         var localServer = this.minecraft.getSingleplayerServer();
         if (localServer != null) {
             NameAndId identity = new NameAndId(this.minecraft.player.getGameProfile().id(), this.minecraft.player.getGameProfile().name());
             return localServer.getPlayerList().isOp(identity);
         }
 
-        // 2. Fallback for Dedicated Servers (Uses the synced status)
         return SimplyQuestsClientPacketHandler.IS_CLIENT_OP;
     }
 
@@ -5353,11 +5025,10 @@ public void checkPendingRefresh() {
         graphics.outline(x, y, 15, 15, COL_UI_BORDER);
 
         int tint = active ? COL_UI_BG : COL_TEXT;
-        
-        // Draw icon centered within the 15x15 button with a small 2px padding
+
         graphics.pose().pushMatrix();
         graphics.pose().translate(x + 2, y + 2);
-        // Scale the 16x16 texture to 11x11 area
+
         float iconScale = 11.0f / 16.0f;
         graphics.pose().scale(iconScale, iconScale);
         graphics.blit(RenderPipelines.GUI_TEXTURED, icon, 0, 0, 0.0f, 0.0f, 16, 16, 16, 16, tint);
@@ -5366,23 +5037,20 @@ public void checkPendingRefresh() {
 
     private void renderStandaloneAlphaSlider(GuiGraphicsExtractor graphics, QuestCanvasImage ci) {
         int sw = 100, sh = 10;
-        int sx = -110, sy = 42; // Positioned near the Alpha button
+        int sx = -110, sy = 42;
 
-        // 1. Draw black background for contrast
         graphics.fill(sx, sy, sx + sw, sy + sh, 0xFF000000);
 
-        // 2. Draw Alpha Gradient (White to Transparent)
         for (int i = 0; i < sw; i++) {
             float a = i / (float) sw;
-            int color = ((int)(a * 255) << 24) | 0xFFFFFF;
+            int color = ((int) (a * 255) << 24) | 0xFFFFFF;
             graphics.fill(sx + i, sy, sx + i + 1, sy + sh, color);
         }
 
-        // 3. Draw Outline and Marker
         graphics.outline(sx, sy, sw, sh, COL_UI_BORDER);
-        int markerX = sx + (int)(ci.getAlpha() * sw);
+        int markerX = sx + (int) (ci.getAlpha() * sw);
         graphics.fill(markerX - 1, sy - 2, markerX + 1, sy + sh + 2, COL_UI_BORDER);
 
-        graphics.centeredText(font, Component.literal("Alpha: " + (int)(ci.getAlpha()*100) + "%"), sx + sw/2, sy - 10, COL_TEXT);
+        graphics.centeredText(font, Component.literal("Alpha: " + (int) (ci.getAlpha() * 100) + "%"), sx + sw / 2, sy - 10, COL_TEXT);
     }
 }

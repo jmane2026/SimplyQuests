@@ -1,16 +1,12 @@
 package com.jmane2026.simplyquests.data;
 
-import com.jmane2026.simplyquests.quest.QuestState;
+import com.google.gson.*;
+import com.jmane2026.simplyquests.network.SaveGroupsPayload.StandaloneChapterInfo;
 import com.jmane2026.simplyquests.player.PlayerQuestProgress;
+import com.jmane2026.simplyquests.quest.Quest;
+import com.jmane2026.simplyquests.quest.QuestState;
 import com.jmane2026.simplyquests.quest.QuestTask;
 import com.mojang.logging.LogUtils;
-import com.google.gson.JsonObject;
-import com.google.gson.JsonArray;
-import com.jmane2026.simplyquests.quest.Quest;
-import com.google.gson.Gson;
-import com.google.gson.GsonBuilder;
-import com.jmane2026.simplyquests.network.SaveGroupsPayload.StandaloneChapterInfo;
-import com.google.gson.JsonElement;
 import com.mojang.serialization.JsonOps;
 import net.minecraft.resources.FileToIdConverter;
 import net.minecraft.resources.Identifier;
@@ -20,10 +16,10 @@ import net.minecraft.util.profiling.ProfilerFiller;
 import net.neoforged.fml.loading.FMLPaths;
 import org.apache.commons.io.FileUtils;
 import org.slf4j.Logger;
-import java.io.FileReader;
-import java.nio.charset.StandardCharsets;
 
 import java.io.File;
+import java.io.FileReader;
+import java.nio.charset.StandardCharsets;
 import java.nio.file.Path;
 import java.util.*;
 
@@ -33,7 +29,6 @@ public class QuestManager extends SimpleJsonResourceReloadListener {
     public final Map<String, Quest> questLookup = new HashMap<>();
     private List<QuestGroup> groups = new ArrayList<>();
     private List<StandaloneChapterInfo> rootChapters = new ArrayList<>();
-    // Create a Gson instance for pretty-printing our quest files
     private static final Gson GSON = new GsonBuilder().setPrettyPrinting().create();
 
     public QuestManager() {
@@ -48,38 +43,28 @@ public class QuestManager extends SimpleJsonResourceReloadListener {
         return this.rootChapters;
     }
 
-    /**
-     * Replaces the current chapters with a list provided by the server.
-     */
     public void setChaptersFromList(List<QuestChapter> list) {
         this.chapters.clear();
         this.questLookup.clear();
         for (QuestChapter ch : list) {
-            // FIX: Use the standardized strict regex to ensure IDs match the server's file system
             String sanitized = ch.getName().toLowerCase().replaceAll("[^a-z0-9/._-]", "_");
             Identifier id = Identifier.fromNamespaceAndPath("simplyquests", sanitized);
             this.chapters.put(id, ch);
         }
     }
 
-    /**
-     * Replaces the current group definitions with a list provided by the server.
-     */
     public void setGroups(List<QuestGroup> list) {
         this.groups.clear();
         this.groups.addAll(list);
     }
 
-    /**
-     * Saves the list of sidebar groups to groups.json in the config folder.
-     */
     public void saveGroups(List<QuestGroup> groups, List<StandaloneChapterInfo> rootChapters) {
         File file = FMLPaths.CONFIGDIR.get().resolve("simplyquests").resolve("groups.json").toFile();
         try {
             JsonObject root = new JsonObject();
             JsonElement groupsJson = QuestGroup.CODEC.listOf().encodeStart(JsonOps.INSTANCE, groups)
                     .getOrThrow(msg -> new RuntimeException("Failed to encode groups: " + msg));
-            
+
             JsonArray rootsJson = new JsonArray();
             rootChapters.forEach(info -> {
                 JsonObject obj = new JsonObject();
@@ -100,16 +85,13 @@ public class QuestManager extends SimpleJsonResourceReloadListener {
         }
     }
 
-    /**
-     * Loads the list of groups from groups.json.
-     */
     private void loadGroups() {
         File file = FMLPaths.CONFIGDIR.get().resolve("simplyquests").resolve("groups.json").toFile();
         if (!file.exists()) return;
 
         try (FileReader reader = new FileReader(file, StandardCharsets.UTF_8)) {
             JsonObject root = GSON.fromJson(reader, JsonObject.class);
-            
+
             if (root.has("groups")) {
                 QuestGroup.CODEC.listOf().parse(JsonOps.INSTANCE, root.get("groups"))
                         .resultOrPartial(err -> LOGGER.error("Failed to parse groups in groups.json: {}", err))
@@ -135,9 +117,6 @@ public class QuestManager extends SimpleJsonResourceReloadListener {
         }
     }
 
-    /**
-     * Forces all in-memory chapters to align their metadata (Group, Order) with the manifest.
-     */
     private void reconcileChapterStructure() {
         this.questLookup.clear();
         for (QuestChapter chapter : this.chapters.values()) {
@@ -147,18 +126,16 @@ public class QuestManager extends SimpleJsonResourceReloadListener {
         }
         for (QuestChapter chapter : this.chapters.values()) {
             boolean found = false;
-            // Check if chapter belongs to a group in the manifest
             for (QuestGroup group : this.groups) {
-                // Check against either name or title to ensure match during renames/migrations
                 int childIdx = group.getChapterNames().indexOf(chapter.getName());
                 if (childIdx != -1) {
                     chapter.setGroupName(group.getName());
                     chapter.setGroupOrder(group.getOrder());
                     chapter.setChapterOrder(childIdx);
-                    found = true; break;
+                    found = true;
+                    break;
                 }
             }
-            // Check if it's a standalone root chapter in the manifest
             if (!found) {
                 for (StandaloneChapterInfo info : this.rootChapters) {
                     if (info.name().equals(chapter.getName())) {
@@ -172,10 +149,7 @@ public class QuestManager extends SimpleJsonResourceReloadListener {
         }
     }
 
-    /**
-     * Returns the directory where quest definitions are stored for modpack distribution.
-     * Path: .minecraft/config/simplyquests/chapters/
-     */
+
     public static Path getConfigDirectory() {
         Path configPath = FMLPaths.CONFIGDIR.get().resolve("simplyquests").resolve("chapters");
         File dir = configPath.toFile();
@@ -194,33 +168,23 @@ public class QuestManager extends SimpleJsonResourceReloadListener {
         return path;
     }
 
-    /**
-     * Saves a chapter to the config directory as a JSON file.
-     * This allows modpack creators to distribute quests via the /config folder.
-     */
     public void saveChapter(Identifier id, QuestChapter chapter) {
         Path dir = getConfigDirectory();
-        // We use the ID path as the filename (e.g., "introduction.json")
         File file = dir.resolve(id.getPath() + ".json").toFile();
 
         try {
-            // Use the Codec to convert our Chapter object into a JsonElement
             JsonElement json = QuestChapter.CODEC.encodeStart(JsonOps.INSTANCE, chapter)
                     .getOrThrow(msg -> new RuntimeException("Failed to encode chapter: " + msg));
 
-            // Write the JSON to the file with pretty printing
             String jsonString = GSON.toJson(json);
             FileUtils.writeStringToFile(file, jsonString, "UTF-8");
-            
+
             LOGGER.info("Simply Quests: Saved chapter {} to {}", id, file.getAbsolutePath());
         } catch (Exception e) {
             LOGGER.error("Simply Quests: Failed to save chapter {}", id, e);
         }
     }
 
-    /**
-     * Manually scans the config directory and loads chapters into the provided map.
-     */
     public void loadConfigChapters(Map<Identifier, QuestChapter> targetMap) {
         File dir = getConfigDirectory().toFile();
         if (!dir.exists()) return;
@@ -234,7 +198,6 @@ public class QuestManager extends SimpleJsonResourceReloadListener {
                 QuestChapter.CODEC.parse(JsonOps.INSTANCE, json)
                         .resultOrPartial(err -> LOGGER.error("Failed to parse config quest {}: {}", file.getName(), err))
                         .ifPresent(chapter -> {
-                            // FIX: Ensure filenames are sanitized into valid Identifiers during load
                             String name = file.getName().replace(".json", "").toLowerCase().replaceAll("[^a-z0-9/._-]", "_");
                             Identifier id = Identifier.fromNamespaceAndPath("simplyquests", name);
                             targetMap.put(id, chapter);
@@ -245,21 +208,14 @@ public class QuestManager extends SimpleJsonResourceReloadListener {
         }
     }
 
-    /**
-     * Re-registers a chapter in memory after a save to ensure the UI stays in sync.
-     */
     public void updateChapterInMemory(Identifier id, QuestChapter chapter) {
         Map<Identifier, QuestChapter> mutable = new HashMap<>(this.chapters);
         mutable.put(id, chapter);
         this.chapters = mutable;
         reconcileChapterStructure();
-        updateQuestStates(new PlayerQuestProgress()); // Refresh AVAILABLE/LOCKED states using a blank progress template
+        updateQuestStates(new PlayerQuestProgress());
     }
 
-    /**
-     * Deletes a chapter file from the config folder. 
-     * Used during renames to prevent duplicate files.
-     */
     public void deleteChapterFile(Identifier id) {
         Path dir = getConfigDirectory();
         File file = dir.resolve(id.getPath() + ".json").toFile();
@@ -285,30 +241,20 @@ public class QuestManager extends SimpleJsonResourceReloadListener {
             });
         }
 
-        // Overlay config chapters on top of resource pack chapters directly into the new map
         loadConfigChapters(newChapters);
         this.chapters = newChapters;
 
-        // 1. Load groups manifest
         loadGroups();
-        // 2. Overwrite chapter metadata based on the manifest
         reconcileChapterStructure();
 
-        // 2. Recalculate states (LOCKED -> AVAILABLE) on the server thread
         updateQuestStates(new PlayerQuestProgress());
         LOGGER.info("Simply Quests: Total active chapters: {}", this.chapters.size());
     }
 
-    /**
-     * Server-side state calculation.
-     * Unlocks quests whose dependencies are met and updates progress status.
-     * @return A result object containing lists of newly completed Quests and Chapters during this specific pass.
-     */
     public CompletionResults updateQuestStates(PlayerQuestProgress progress) {
         List<Quest> newlyCompletedQuests = new ArrayList<>();
         List<QuestChapter> newlyCompletedChapters = new ArrayList<>();
 
-        // 1. Gather all valid IDs from the current registry for validation
         List<Quest> allQuests = getAllQuests();
         Map<String, Quest> lookup = new HashMap<>();
         Set<String> validTaskIds = new HashSet<>();
@@ -320,19 +266,11 @@ public class QuestManager extends SimpleJsonResourceReloadListener {
             for (QuestTask t : q.getTasks()) validTaskIds.add(t.getId());
         }
 
-        // 2. PRUNING: Remove "Zombie" data from player progress that no longer exists in config
-        // This prevents recreated quests from inheriting progress from deleted versions.
-        
-        // FIX: Rebuild sets/maps if they are unmodifiable (common with Codec-loaded data)
-        // We check for removal needs and replace the entire collection if pruning is required.
-
-        // 2. PRUNING: Only remove if the registry is fully loaded to prevent race-condition wipes
         if (!allQuests.isEmpty()) {
             progress.getCompletedQuests().removeIf(id -> !lookup.containsKey(id));
-            
-            // Use exact contains check for task IDs
+
             progress.getTaskProgressMap().keySet().removeIf(id -> !validTaskIds.contains(id));
-            
+
             progress.getClaimedRewards().removeIf(id -> {
                 int lastSlash = id.lastIndexOf('/');
                 if (lastSlash == -1) return !lookup.containsKey(id);
@@ -340,24 +278,21 @@ public class QuestManager extends SimpleJsonResourceReloadListener {
                 return !lookup.containsKey(questId);
             });
         }
-        
+
         try {
             progress.getTaskProgressMap().keySet().removeIf(id -> !validTaskIds.contains(id));
         } catch (UnsupportedOperationException e) {
-            // If unmodifiable, we replace the internal map with a mutable one
             Map<String, Integer> mutableTasks = new HashMap<>(progress.getTaskProgressMap());
             mutableTasks.keySet().removeIf(id -> !validTaskIds.contains(id));
-            // You would need a setter here or direct field access to fix this permanently in PlayerQuestProgress
         }
-        
+
         progress.getClaimedRewards().removeIf(id -> {
             int lastSlash = id.lastIndexOf('/');
-            if (lastSlash == -1) return true; // Prune malformed or legacy IDs
+            if (lastSlash == -1) return true;
             String questId = id.substring(0, lastSlash);
             return !lookup.containsKey(questId);
         });
 
-        // Prune Completed Chapters
         progress.getCompletedChapters().removeIf(name -> !validChapterNames.contains(name));
 
         Map<String, QuestState> computedStates = new HashMap<>();
@@ -397,9 +332,6 @@ public class QuestManager extends SimpleJsonResourceReloadListener {
                         if (current > 0) anyStarted = true;
                     }
 
-                    // Completion Logic: 
-                    // 1. If main tasks exist, all of them must be finished.
-                    // 2. If ONLY optional tasks exist, at least one must be finished.
                     boolean isDone = hasRequiredTasks ? allRequiredDone : anyOptionalDone;
 
                     if (isDone) {
@@ -414,14 +346,12 @@ public class QuestManager extends SimpleJsonResourceReloadListener {
                 }
             }
 
-            // Track transition to COMPLETED
             if (!wasCompleted && computedStates.get(quest.getId()) == QuestState.COMPLETED) {
                 progress.completeQuest(quest.getId());
                 newlyCompletedQuests.add(quest);
             }
         }
 
-        // Recalculate Chapter States
         for (QuestChapter chapter : this.chapters.values()) {
             List<Quest> chapterQuests = chapter.getQuests();
             if (chapterQuests.isEmpty()) {
@@ -446,8 +376,6 @@ public class QuestManager extends SimpleJsonResourceReloadListener {
 
             chapter.setState(newState);
 
-            // Use the persistent player data to check if this is a NEW completion
-            // This prevents duplicate toasts in Singleplayer and across restarts
             if (!progress.isChapterComplete(chapter.getName()) && newState == QuestState.COMPLETED) {
                 progress.completeChapter(chapter.getName());
                 newlyCompletedChapters.add(chapter);
@@ -457,7 +385,8 @@ public class QuestManager extends SimpleJsonResourceReloadListener {
         return new CompletionResults(newlyCompletedQuests, newlyCompletedChapters);
     }
 
-    public record CompletionResults(List<Quest> quests, List<QuestChapter> chapters) {}
+    public record CompletionResults(List<Quest> quests, List<QuestChapter> chapters) {
+    }
 
     public Map<Identifier, QuestChapter> getChapters() {
         return this.chapters;

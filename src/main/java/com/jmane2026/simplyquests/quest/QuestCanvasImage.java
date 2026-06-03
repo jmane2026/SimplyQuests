@@ -16,7 +16,7 @@ public class QuestCanvasImage {
     ).apply(instance, QuestCanvasImage::new));
 
     private final String id;
-    private final String imageId; // The filename on disk (e.g., "cool_logo.png")
+    private final String imageId;
     private double x, y, width, height;
     private float rotation, alpha;
     private String chapterName;
@@ -32,20 +32,67 @@ public class QuestCanvasImage {
         this.alpha = alpha;
     }
 
-    public String getId() { return id; }
-    public String getImageId() { return imageId; }
-    public double getX() { return x; }
-    public void setX(double x) { this.x = x; }
-    public double getY() { return y; }
-    public void setY(double y) { this.y = y; }
-    public double getWidth() { return width; }
-    public void setWidth(double width) { this.width = width; }
-    public double getHeight() { return height; }
-    public void setHeight(double height) { this.height = height; }
-    public float getRotation() { return rotation; }
-    public void setRotation(float rotation) { this.rotation = rotation; }
-    public float getAlpha() { return alpha; }
-    public void setAlpha(float alpha) { this.alpha = alpha; }
-    public String getChapterName() { return chapterName; }
-    public void setChapterName(String name) { this.chapterName = name; }
+    public String getId() {
+        return id;
+    }
+
+    public String getImageId() {
+        return imageId;
+    }
+
+    public double getX() {
+        return x;
+    }
+
+    public void setX(double x) {
+        this.x = x;
+    }
+
+    public double getY() {
+        return y;
+    }
+
+    public void setY(double y) {
+        this.y = y;
+    }
+
+    public double getWidth() {
+        return width;
+    }
+
+    public void setWidth(double width) {
+        this.width = width;
+    }
+
+    public double getHeight() {
+        return height;
+    }
+
+    public void setHeight(double height) {
+        this.height = height;
+    }
+
+    public float getRotation() {
+        return rotation;
+    }
+
+    public void setRotation(float rotation) {
+        this.rotation = rotation;
+    }
+
+    public float getAlpha() {
+        return alpha;
+    }
+
+    public void setAlpha(float alpha) {
+        this.alpha = alpha;
+    }
+
+    public String getChapterName() {
+        return chapterName;
+    }
+
+    public void setChapterName(String name) {
+        this.chapterName = name;
+    }
 }

@@ -1,17 +1,18 @@
 package com.jmane2026.simplyquests.data;
 
-import com.jmane2026.simplyquests.quest.QuestState;
 import com.jmane2026.simplyquests.quest.CanvasText;
 import com.jmane2026.simplyquests.quest.Quest;
 import com.jmane2026.simplyquests.quest.QuestCanvasImage;
+import com.jmane2026.simplyquests.quest.QuestState;
 import com.mojang.serialization.Codec;
 import com.mojang.serialization.codecs.RecordCodecBuilder;
+import net.minecraft.core.registries.BuiltInRegistries;
 import net.minecraft.network.RegistryFriendlyByteBuf;
 import net.minecraft.network.codec.ByteBufCodecs;
 import net.minecraft.network.codec.StreamCodec;
-import net.minecraft.core.registries.BuiltInRegistries;
 import net.minecraft.world.item.Item;
 import net.minecraft.world.item.Items;
+
 import java.util.List;
 
 public class QuestChapter {
@@ -31,8 +32,7 @@ public class QuestChapter {
             Codec.DOUBLE.optionalFieldOf("zoom", 1.0).forGetter(QuestChapter::getZoom)
     ).apply(instance, QuestChapter::new));
 
-    // This resolves the compilation error by creating a network-ready codec from the JSON codec
-    public static final StreamCodec<RegistryFriendlyByteBuf, QuestChapter> STREAM_CODEC = 
+    public static final StreamCodec<RegistryFriendlyByteBuf, QuestChapter> STREAM_CODEC =
             ByteBufCodecs.fromCodecWithRegistries(CODEC);
 
     private String groupName;
@@ -66,25 +66,75 @@ public class QuestChapter {
         this.zoom = zoom;
     }
 
-    public double getOffsetX() { return offsetX; }
-    public double getOffsetY() { return offsetY; }
-    public double getZoom() { return zoom; }
+    public double getOffsetX() {
+        return offsetX;
+    }
 
-    public String getGroupName() { return groupName; }
-    public void setGroupName(String groupName) { this.groupName = groupName; }
-    public void setGroupOrder(int groupOrder) { this.groupOrder = groupOrder; }
-    public void setChapterOrder(int chapterOrder) { this.chapterOrder = chapterOrder; }
+    public double getOffsetY() {
+        return offsetY;
+    }
 
-    public int getGroupOrder() { return groupOrder; }
-    public int getGroupColor() { return groupColor; }
-    public String getName() { return name; }
-    public String getTitle() { return title; }
-    public int getChapterOrder() { return chapterOrder; }
-    public Item getIcon() { return icon; }
-    public List<Quest> getQuests() { return quests; }
-    public List<CanvasText> getCanvasTexts() { return canvasTexts; }
-    public List<QuestCanvasImage> getCanvasImages() { return canvasImages; }
+    public double getZoom() {
+        return zoom;
+    }
 
-    public QuestState getState() { return state; }
-    public void setState(QuestState state) { this.state = state; }
+    public String getGroupName() {
+        return groupName;
+    }
+
+    public void setGroupName(String groupName) {
+        this.groupName = groupName;
+    }
+
+    public void setGroupOrder(int groupOrder) {
+        this.groupOrder = groupOrder;
+    }
+
+    public void setChapterOrder(int chapterOrder) {
+        this.chapterOrder = chapterOrder;
+    }
+
+    public int getGroupOrder() {
+        return groupOrder;
+    }
+
+    public int getGroupColor() {
+        return groupColor;
+    }
+
+    public String getName() {
+        return name;
+    }
+
+    public String getTitle() {
+        return title;
+    }
+
+    public int getChapterOrder() {
+        return chapterOrder;
+    }
+
+    public Item getIcon() {
+        return icon;
+    }
+
+    public List<Quest> getQuests() {
+        return quests;
+    }
+
+    public List<CanvasText> getCanvasTexts() {
+        return canvasTexts;
+    }
+
+    public List<QuestCanvasImage> getCanvasImages() {
+        return canvasImages;
+    }
+
+    public QuestState getState() {
+        return state;
+    }
+
+    public void setState(QuestState state) {
+        this.state = state;
+    }
 }

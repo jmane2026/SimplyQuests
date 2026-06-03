@@ -36,7 +36,6 @@ public class SimplyQuestsConfig {
 
     public static final ModConfigSpec.DoubleValue GRID_SIZE;
 
-    // Button Position Configs
     public static final ModConfigSpec.IntValue BOOK_X;
     public static final ModConfigSpec.IntValue BOOK_Y;
 

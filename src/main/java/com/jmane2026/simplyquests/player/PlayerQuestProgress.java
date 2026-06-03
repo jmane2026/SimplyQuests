@@ -11,7 +11,6 @@ import java.util.Map;
 
 public class PlayerQuestProgress {
 
-    // In PlayerQuestProgress.java
     public static final MapCodec<PlayerQuestProgress> CODEC = RecordCodecBuilder.mapCodec(instance -> instance.group(
             Codec.STRING.listOf().optionalFieldOf("completed", List.of())
                     .xmap(HashSet::new, List::copyOf).forGetter(p -> p.completedQuests),
@@ -46,32 +45,53 @@ public class PlayerQuestProgress {
         this.editMode = editMode;
     }
 
-    public int getTaskAmount(String taskId) { return taskProgress.getOrDefault(taskId, 0); }
+    public int getTaskAmount(String taskId) {
+        return taskProgress.getOrDefault(taskId, 0);
+    }
+
     public void setTaskAmount(String taskId, int amount) {
         if (taskId != null) taskProgress.put(taskId, amount);
     }
-    
+
     public void resetTaskProgress(String taskId) {
         taskProgress.remove(taskId);
     }
 
-    public boolean isQuestComplete(String questId) { return completedQuests.contains(questId); }
-    public void completeQuest(String questId) { if (questId != null) completedQuests.add(questId); }
+    public boolean isQuestComplete(String questId) {
+        return completedQuests.contains(questId);
+    }
 
-    public boolean isChapterComplete(String name) { return completedChapters.contains(name); }
-    public void completeChapter(String name) { if (name != null) completedChapters.add(name); }
+    public void completeQuest(String questId) {
+        if (questId != null) completedQuests.add(questId);
+    }
 
-    public boolean isRewardClaimed(String questId) { return claimedRewards.contains(questId); }
-    public void claimReward(String questId) { if (questId != null) claimedRewards.add(questId); }
-    public void unclaimReward(String rewardId) { claimedRewards.remove(rewardId); }
+    public boolean isChapterComplete(String name) {
+        return completedChapters.contains(name);
+    }
+
+    public void completeChapter(String name) {
+        if (name != null) completedChapters.add(name);
+    }
+
+    public boolean isRewardClaimed(String questId) {
+        return claimedRewards.contains(questId);
+    }
+
+    public void claimReward(String questId) {
+        if (questId != null) claimedRewards.add(questId);
+    }
+
+    public void unclaimReward(String rewardId) {
+        claimedRewards.remove(rewardId);
+    }
 
     public void resetQuest(String questId) {
         completedQuests.remove(questId);
-        // When a quest is reset, also clear its task progress
-        // We can't easily iterate tasks here, so this will be handled in QuestServerEvents
-        // This method primarily handles the completed status.
     }
-    public void resetChapter(String name) { completedChapters.remove(name); }
+
+    public void resetChapter(String name) {
+        completedChapters.remove(name);
+    }
 
     public HashSet<String> getCompletedQuests() {
         return this.completedQuests;
@@ -89,6 +109,11 @@ public class PlayerQuestProgress {
         return this.completedChapters;
     }
 
-    public boolean isEditMode() { return editMode; }
-    public void setEditMode(boolean editMode) { this.editMode = editMode; }
+    public boolean isEditMode() {
+        return editMode;
+    }
+
+    public void setEditMode(boolean editMode) {
+        this.editMode = editMode;
+    }
 }

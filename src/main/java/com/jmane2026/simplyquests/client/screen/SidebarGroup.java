@@ -1,7 +1,5 @@
 package com.jmane2026.simplyquests.client.screen;
 
-import org.spongepowered.asm.mixin.MixinEnvironment;
-
 import java.util.ArrayList;
 import java.util.List;
 
@@ -18,16 +16,27 @@ public class SidebarGroup implements SidebarEntry {
         this.isExpanded = false;
     }
 
-    public String getName() { return name != null ? name : title; }
-    public void setName(String name) { this.name = name; }
+    public String getName() {
+        return name != null ? name : title;
+    }
 
-    public String getTitle() { return title; }
-    public void setTitle(String title) { this.title = title; }
+    public void setName(String name) {
+        this.name = name;
+    }
 
-    public int getTitleColor() { return titleColor; }
+    public String getTitle() {
+        return title;
+    }
+
+    public void setTitle(String title) {
+        this.title = title;
+    }
+
+    public int getTitleColor() {
+        return titleColor;
+    }
 
     public boolean isExpanded() {
-        // FIX: Use the unique internal name for tracking expansion state
         return QuestPositionManager.isGroupExpanded(this.getName());
     }
 

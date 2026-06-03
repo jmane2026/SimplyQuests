@@ -13,5 +13,9 @@ public record DeleteImagePayload(String imageId) implements CustomPacketPayload 
             ByteBufCodecs.STRING_UTF8, DeleteImagePayload::imageId,
             DeleteImagePayload::new
     );
-    @Override public Type<? extends CustomPacketPayload> type() { return TYPE; }
+
+    @Override
+    public Type<? extends CustomPacketPayload> type() {
+        return TYPE;
+    }
 }

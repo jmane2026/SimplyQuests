@@ -1,24 +1,31 @@
 package com.jmane2026.simplyquests.client.screen.input;
 
 import com.jmane2026.simplyquests.client.SimplyQuestsClientPacketHandler;
-import com.jmane2026.simplyquests.client.screen.*;
+import com.jmane2026.simplyquests.client.screen.QuestScreen;
+import com.jmane2026.simplyquests.client.screen.SidebarChapter;
+import com.jmane2026.simplyquests.client.screen.SidebarEntry;
+import com.jmane2026.simplyquests.client.screen.SidebarGroup;
+import com.jmane2026.simplyquests.network.ClaimRewardPayload;
+import com.jmane2026.simplyquests.network.QuestLockPayload;
+import com.jmane2026.simplyquests.network.ToggleCheckboxPayload;
 import com.jmane2026.simplyquests.quest.*;
-import com.jmane2026.simplyquests.network.*;
 import com.jmane2026.simplyquests.util.QuestClientData;
 import net.minecraft.client.Minecraft;
 import net.neoforged.neoforge.client.network.ClientPacketDistributor;
 import org.lwjgl.glfw.GLFW;
-import java.awt.Rectangle;
+
+import java.awt.*;
 
 public class CanvasHandler {
     public static boolean handleDetailsWindow(QuestScreen screen, double mouseX, double mouseY, int button) {
         if (screen.selectedQuest == null || screen.isEditorOpen) return false;
         Rectangle b = screen.getDetailsBounds();
 
-        // 1. HIGH PRIORITY: X Button (Inside panel but top priority)
         if (button == GLFW.GLFW_MOUSE_BUTTON_1) {
             if (mouseX >= b.x + b.width - 18 && mouseX <= b.x + b.width - 5 && mouseY >= b.y + 3 && mouseY <= b.y + 17) {
-                screen.selectedQuest = null; QuestScreen.playClickSound(); return true;
+                screen.selectedQuest = null;
+                QuestScreen.playClickSound();
+                return true;
             }
         }
 
@@ -31,35 +38,49 @@ public class CanvasHandler {
         }
 
         if (button == GLFW.GLFW_MOUSE_BUTTON_1 && mouseY < b.y + 20) {
-            screen.isDraggingPopup = true; screen.dragOffsetX = mouseX - b.x; screen.dragOffsetY = mouseY - b.y; return true;
+            screen.isDraggingPopup = true;
+            screen.dragOffsetX = mouseX - b.x;
+            screen.dragOffsetY = mouseY - b.y;
+            return true;
         }
 
-        // Pagination Arrows
         int tasksAreaX = b.x + 10;
         int rewardsAreaX = b.x + (b.width / 2) + 10;
         int taskCount = screen.selectedQuest.getTasks().size();
         int rewardCount = screen.selectedQuest.getRewards().size();
 
         if (button == 0 && mouseY >= b.y + 45 && mouseY <= b.y + 65) {
-            // Task Pagination: Only check if more than 4 tasks exist
             if (taskCount > 4) {
-                if (mouseX >= tasksAreaX && mouseX <= tasksAreaX + 12 && screen.taskPage > 0) { screen.taskPage--; QuestScreen.playClickSound(); return true; }
-                if (mouseX >= tasksAreaX + 108 && mouseX <= tasksAreaX + 120 && (screen.taskPage + 1) * 4 < taskCount) { screen.taskPage++; QuestScreen.playClickSound(); return true; }
+                if (mouseX >= tasksAreaX && mouseX <= tasksAreaX + 12 && screen.taskPage > 0) {
+                    screen.taskPage--;
+                    QuestScreen.playClickSound();
+                    return true;
+                }
+                if (mouseX >= tasksAreaX + 108 && mouseX <= tasksAreaX + 120 && (screen.taskPage + 1) * 4 < taskCount) {
+                    screen.taskPage++;
+                    QuestScreen.playClickSound();
+                    return true;
+                }
             }
-            // Reward Pagination: Only check if more than 4 rewards exist
             if (rewardCount > 4) {
-                if (mouseX >= rewardsAreaX && mouseX <= rewardsAreaX + 12 && screen.rewardPage > 0) { screen.rewardPage--; QuestScreen.playClickSound(); return true; }
-                if (mouseX >= rewardsAreaX + 108 && mouseX <= rewardsAreaX + 120 && (screen.rewardPage + 1) * 4 < rewardCount) { screen.rewardPage++; QuestScreen.playClickSound(); return true; }
+                if (mouseX >= rewardsAreaX && mouseX <= rewardsAreaX + 12 && screen.rewardPage > 0) {
+                    screen.rewardPage--;
+                    QuestScreen.playClickSound();
+                    return true;
+                }
+                if (mouseX >= rewardsAreaX + 108 && mouseX <= rewardsAreaX + 120 && (screen.rewardPage + 1) * 4 < rewardCount) {
+                    screen.rewardPage++;
+                    QuestScreen.playClickSound();
+                    return true;
+                }
             }
         }
 
-        // Add Buttons
         if (QuestGlobalState.isEditModeEnabled && button == 0 && mouseY >= b.y + 30 - 2 && mouseY <= b.y + 30 + 12) {
             int tasksCenter = b.x + (b.width / 4);
             int plusX = tasksCenter + (Minecraft.getInstance().font.width("Tasks") / 2) + 8;
             if (mouseX >= plusX - 2 && mouseX <= plusX + 10) {
 
-                // FIX: Request a fresh lock when adding a task to ensure consecutive edits are protected
                 screen.originalQuest = screen.selectedQuest;
                 if (screen.originalQuest != null) {
                     screen.originalQuest.setLockedBy(Minecraft.getInstance().player.getName().getString());
@@ -69,13 +90,13 @@ public class CanvasHandler {
                 screen.taskToModify = new QuestTask(QuestTask.generateTaskId(screen.selectedQuest.getId(), "task", screen.selectedQuest.getTasks()), QuestTask.TaskType.ITEM, "", "New Task", 1, 0, false, false, false, QuestTask.TaskState.INCOMPLETE, 0, 0, 0, false);
                 screen.isTaskEditorOpen = true;
                 screen.editorUI.isTaskMode = true;
-                screen.tempUseAsIcon = false; // New tasks start as false
-                QuestScreen.playClickSound(); return true;
+                screen.tempUseAsIcon = false;
+                QuestScreen.playClickSound();
+                return true;
             }
             int rPlusX = (b.x + (3 * b.width / 4)) + (Minecraft.getInstance().font.width("Rewards") / 2) + 8;
             if (mouseX >= rPlusX - 2 && mouseX <= rPlusX + 10) {
 
-                // FIX: Request a fresh lock when adding a reward
                 screen.originalQuest = screen.selectedQuest;
                 if (screen.originalQuest != null) {
                     screen.originalQuest.setLockedBy(Minecraft.getInstance().player.getName().getString());
@@ -83,23 +104,28 @@ public class CanvasHandler {
                 }
 
                 screen.rewardToModify = new QuestReward(QuestReward.generateRewardId(screen.selectedQuest.getId(), "item", screen.selectedQuest.getRewards()), QuestReward.RewardType.ITEM, net.minecraft.world.item.Items.AIR, 1, "", new java.util.ArrayList<>());
-                screen.isRewardEditorOpen = true; screen.editorUI.isRewardModeOpen = true; QuestScreen.playClickSound(); return true;
+                screen.isRewardEditorOpen = true;
+                screen.editorUI.isRewardModeOpen = true;
+                QuestScreen.playClickSound();
+                return true;
             }
         }
 
-        // Node Interaction
         int startIdx = screen.taskPage * 4;
         for (int i = 0; i < Math.min(4, screen.selectedQuest.getTasks().size() - startIdx); i++) {
             int ix = b.x + 10 + (screen.selectedQuest.getTasks().size() > 4 ? 12 : 0) + (i * 24);
             if (mouseX >= ix && mouseX <= ix + 20 && mouseY >= b.y + 45 && mouseY <= b.y + 65) {
                 QuestTask t = screen.selectedQuest.getTasks().get(startIdx + i);
                 if (button == 0) {
-                    if (t.getType() == QuestTask.TaskType.ITEM && t.isConsume()) { screen.submittingTask = t; screen.isItemSubmissionOpen = true; }
-                    else if (t.getType() == QuestTask.TaskType.CHECKBOX) {
+                    if (t.getType() == QuestTask.TaskType.ITEM && t.isConsume()) {
+                        screen.submittingTask = t;
+                        screen.isItemSubmissionOpen = true;
+                    } else if (t.getType() == QuestTask.TaskType.CHECKBOX) {
                         ClientPacketDistributor.sendToServer(new ToggleCheckboxPayload(screen.selectedQuest.getId(), t.getId()));
                         QuestScreen.playClickSound();
                     }
-                } else if (button == 1 && QuestGlobalState.isEditModeEnabled) screen.openTaskContextMenu(mouseX, mouseY, t);
+                } else if (button == 1 && QuestGlobalState.isEditModeEnabled)
+                    screen.openTaskContextMenu(mouseX, mouseY, t);
                 else if (button == GLFW.GLFW_MOUSE_BUTTON_MIDDLE) screen.movingTask = t;
                 return true;
             }
@@ -116,7 +142,7 @@ public class CanvasHandler {
 
                 if (button == 0) {
                     boolean questDone = SimplyQuestsClientPacketHandler.CLIENT_COMPLETED_QUESTS.contains(screen.selectedQuest.getId());
-                    // Only allow interaction if the quest is finished and the reward hasn't been claimed yet
+
                     if (questDone && !claimed) {
                         if (isBundle) {
                             screen.activeChoiceBundle = r;
@@ -128,10 +154,12 @@ public class CanvasHandler {
                             ClientPacketDistributor.sendToServer(new ClaimRewardPayload(r.getId()));
                         }
                     }
-                }
-                else if (button == 1 && QuestGlobalState.isEditModeEnabled) screen.openRewardContextMenu(mouseX, mouseY, r);
-                else if (button == GLFW.GLFW_MOUSE_BUTTON_MIDDLE && QuestGlobalState.isEditModeEnabled) screen.movingReward = r;
-                QuestScreen.playClickSound(); return true;
+                } else if (button == 1 && QuestGlobalState.isEditModeEnabled)
+                    screen.openRewardContextMenu(mouseX, mouseY, r);
+                else if (button == GLFW.GLFW_MOUSE_BUTTON_MIDDLE && QuestGlobalState.isEditModeEnabled)
+                    screen.movingReward = r;
+                QuestScreen.playClickSound();
+                return true;
             }
         }
         return true;
@@ -140,7 +168,6 @@ public class CanvasHandler {
     public static boolean handleCanvas(QuestScreen screen, double mouseX, double mouseY, int button) {
         String activeChapterId = screen.selectedChapter.getId();
         if (button == 0) {
-            // Pass 1: Select Images (Foreground to Background)
             for (int i = screen.allCanvasImages.size() - 1; i >= 0; i--) {
                 QuestCanvasImage ci = screen.allCanvasImages.get(i);
                 if (ci.getChapterName().equals(activeChapterId) && screen.isMouseOverImage(mouseX, mouseY, ci)) {
@@ -150,16 +177,18 @@ public class CanvasHandler {
                     return true;
                 }
             }
-            screen.selectedCanvasImage = null; // Deselect if clicking empty space
+            screen.selectedCanvasImage = null;
 
             for (Quest q : screen.allQuests) {
                 if (q.getChapterName().equals(activeChapterId) && screen.isMouseOverNode(mouseX, mouseY, q)) {
-                    if (!q.getLockedBy().isEmpty() && !q.getLockedBy().equals(Minecraft.getInstance().player.getName().getString())) return true;
-                    screen.selectedQuest = q; QuestScreen.playClickSound(); return true;
+                    if (!q.getLockedBy().isEmpty() && !q.getLockedBy().equals(Minecraft.getInstance().player.getName().getString()))
+                        return true;
+                    screen.selectedQuest = q;
+                    QuestScreen.playClickSound();
+                    return true;
                 }
             }
         } else if (button == GLFW.GLFW_MOUSE_BUTTON_MIDDLE && QuestGlobalState.isEditModeEnabled) {
-            // Pick up Canvas Images
             for (int i = screen.allCanvasImages.size() - 1; i >= 0; i--) {
                 QuestCanvasImage ci = screen.allCanvasImages.get(i);
                 if (ci.getChapterName().equals(activeChapterId) && screen.isMouseOverImage(mouseX, mouseY, ci)) {
@@ -174,21 +203,19 @@ public class CanvasHandler {
                     return true;
                 }
             }
-            // Pick up Quest Nodes
             for (Quest q : screen.allQuests) {
                 if (q.getChapterName().equals(activeChapterId) && screen.isMouseOverNode(mouseX, mouseY, q)) {
-                    if (!q.getLockedBy().isEmpty() && !q.getLockedBy().equals(Minecraft.getInstance().player.getName().getString())) return true;
+                    if (!q.getLockedBy().isEmpty() && !q.getLockedBy().equals(Minecraft.getInstance().player.getName().getString()))
+                        return true;
                     screen.movingQuest = q;
                     QuestScreen.playClickSound();
                     return true;
                 }
             }
-            // Pick up Canvas Text
             for (CanvasText ct : screen.allCanvasTexts) {
                 if (ct.getChapterName().equals(activeChapterId) && screen.isMouseOverText(mouseX, mouseY, ct)) {
                     screen.movingCanvasText = ct;
 
-                    // FIX: Capture the anchor offset so the text doesn't snap its corner to the mouse
                     double absoluteCenterX = screen.width / 2.0;
                     double absoluteCenterY = screen.height / 2.0;
                     double worldMouseX = screen.offsetX + ((mouseX - absoluteCenterX) / screen.zoom);
@@ -210,12 +237,18 @@ public class CanvasHandler {
             }
             for (Quest q : screen.allQuests) {
                 if (q.getChapterName().equals(activeChapterId) && screen.isMouseOverNode(mouseX, mouseY, q)) {
-                    // FIX: Block Context Menu if locked by someone else
-                    if (!q.getLockedBy().isEmpty() && !q.getLockedBy().equals(Minecraft.getInstance().player.getName().getString())) return true;
-                    screen.openQuestContextMenu(mouseX, mouseY, q); return true;
+
+                    if (!q.getLockedBy().isEmpty() && !q.getLockedBy().equals(Minecraft.getInstance().player.getName().getString()))
+                        return true;
+                    screen.openQuestContextMenu(mouseX, mouseY, q);
+                    return true;
                 }
             }
-            for (CanvasText ct : screen.allCanvasTexts) if (ct.getChapterName().equals(activeChapterId) && screen.isMouseOverText(mouseX, mouseY, ct)) { screen.openTextContextMenu(mouseX, mouseY, ct); return true; }
+            for (CanvasText ct : screen.allCanvasTexts)
+                if (ct.getChapterName().equals(activeChapterId) && screen.isMouseOverText(mouseX, mouseY, ct)) {
+                    screen.openTextContextMenu(mouseX, mouseY, ct);
+                    return true;
+                }
             screen.openCanvasContextMenu(mouseX, mouseY);
             return true;
         }
@@ -229,8 +262,7 @@ public class CanvasHandler {
         double lmx = mouseX / scale, lmy = mouseY / scale;
         double translatedLmy = lmy + screen.sidebarScrollOffset;
 
-        // 1. Settings Gear (Precise Hitbox)
-        int gearX = (int)(sw / scale) - 15;
+        int gearX = (int) (sw / scale) - 15;
         if (lmx >= gearX && lmx <= gearX + 12 && lmy >= 3 && lmy <= 13) {
             if (button == 0) {
                 screen.isSettingsOpen = true;
@@ -239,27 +271,23 @@ public class CanvasHandler {
             return true;
         }
 
-        // 2. Main Add Button (+) (Precise Hitbox)
-        int mainPlusX = (int)(sw / scale) - 30;
+        int mainPlusX = (int) (sw / scale) - 30;
         if (QuestGlobalState.isEditModeEnabled && lmx >= mainPlusX - 4 && lmx <= mainPlusX + 12 && lmy >= 3 && lmy <= 13) {
             if (button == 0) screen.openSideBarContextMenu(mouseX, mouseY);
             return true;
         }
 
-        // 3. Sidebar Entry Loop
         int curY = (int) (15 / scale);
         int scaledMaxW = (int) (QuestScreen.MAX_SIDEBAR_WIDTH / scale);
 
         for (SidebarEntry entry : screen.getSidebarEntries()) {
             if (entry instanceof SidebarGroup group) {
                 if (lmy >= 15 && translatedLmy >= curY && translatedLmy < curY + 14) {
-                    // A. Check for Group Add (+) Button (Highest Row Priority)
                     int gPlusX = scaledMaxW - 12;
                     if (QuestGlobalState.isEditModeEnabled && group.isExpanded() && lmx >= gPlusX - 4 && lmx <= gPlusX + 12) {
                         if (button == 0) {
                             if (screen.isSidebarEditing()) screen.stopSidebarEditing(true);
                             SidebarChapter ch = new SidebarChapter("New Chapter");
-                            // Unique ID allows multiple "New Chapter" entries across groups
                             String uniqueId = "chapter_" + Long.toHexString(System.currentTimeMillis()).substring(8);
                             ch.setId(uniqueId);
 
@@ -273,17 +301,14 @@ public class CanvasHandler {
                         return true;
                     }
 
-                    // B. Group Move (Middle Click)
                     if (button == GLFW.GLFW_MOUSE_BUTTON_MIDDLE && QuestGlobalState.isEditModeEnabled) {
                         screen.movingSidebarGroup = group;
                         QuestScreen.playClickSound();
                         return true;
-                    } 
-                    
-                    // C. Toggle Expansion (Left Click) or Context Menu (Right Click)
+                    }
+
                     if (button == 0) {
                         group.toggleExpanded();
-                        // FIX: Save expansion state locally instead of globally overwriting the server manifest
                         QuestClientData.setGroupExpanded(group.getName(), group.isExpanded());
                         QuestScreen.playClickSound();
                     } else if (button == 1 && QuestGlobalState.isEditModeEnabled) {
@@ -325,11 +350,10 @@ public class CanvasHandler {
             }
             curY += 6;
         }
-        return true; // Consume all other clicks in sidebar area
+        return true;
     }
 
     public static boolean handleMoveModes(QuestScreen screen, double mouseX, double mouseY, int button) {
-        // PRIORITY: If we are moving ANYTHING, this method must return true to block all other inputs
         if (screen.movingQuest == null && screen.movingCanvasText == null &&
                 screen.movingTask == null && screen.movingReward == null && screen.movingCanvasImage == null &&
                 screen.movingSidebarGroup == null && screen.movingSidebarChapter == null) {

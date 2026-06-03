@@ -15,7 +15,7 @@ public enum QuestShape {
     private final Identifier texture;
 
     QuestShape(String filename) {
-        this.texture = Identifier.fromNamespaceAndPath("simplyquests","textures/gui/shapes/" + filename);
+        this.texture = Identifier.fromNamespaceAndPath("simplyquests", "textures/gui/shapes/" + filename);
     }
 
     public Identifier getTexture() {

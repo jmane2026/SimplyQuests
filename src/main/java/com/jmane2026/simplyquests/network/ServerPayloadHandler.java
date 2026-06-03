@@ -4,22 +4,24 @@ import com.jmane2026.simplyquests.data.QuestChapter;
 import com.jmane2026.simplyquests.data.QuestGroup;
 import com.jmane2026.simplyquests.data.QuestManager;
 import com.jmane2026.simplyquests.events.QuestServerEvents;
+import com.jmane2026.simplyquests.player.PlayerQuestProgress;
 import com.jmane2026.simplyquests.quest.CanvasText;
 import com.jmane2026.simplyquests.quest.Quest;
 import com.jmane2026.simplyquests.quest.QuestCanvasImage;
 import com.jmane2026.simplyquests.quest.QuestTask;
 import com.jmane2026.simplyquests.registry.QuestAttachmentRegistry;
-import com.jmane2026.simplyquests.player.PlayerQuestProgress;
 import net.minecraft.resources.Identifier;
 import net.minecraft.server.level.ServerPlayer;
 import net.minecraft.server.players.NameAndId;
-import net.neoforged.neoforge.network.handling.IPayloadContext;
 import net.neoforged.neoforge.network.PacketDistributor;
+import net.neoforged.neoforge.network.handling.IPayloadContext;
 
-import java.util.*;
 import java.nio.file.Files;
 import java.nio.file.Path;
-import java.util.stream.Collectors;
+import java.util.ArrayList;
+import java.util.LinkedHashMap;
+import java.util.List;
+import java.util.Map;
 
 public class ServerPayloadHandler {
 
@@ -60,33 +62,27 @@ public class ServerPayloadHandler {
             QuestChapter chapterToSave = payload.chapter();
 
             if (oldChapter != null) {
-                // 1. Merge Quests (Owner-Aware)
                 Map<String, Quest> questMap = new LinkedHashMap<>();
 
-                // Populate from server state, but respect deletions from the lock owner
                 for (Quest q : oldChapter.getQuests()) {
                     if (q.getLockedBy().equals(playerName)) {
                         boolean inPayload = payload.chapter().getQuests().stream().anyMatch(i -> i.getId().equals(q.getId()));
-                        if (!inPayload) continue; // Owner removed it; don't resurrect it
+                        if (!inPayload) continue;
                     }
                     questMap.put(q.getId(), q);
                 }
 
-                // Apply incoming payload (overwrites/adds)
                 payload.chapter().getQuests().forEach(q -> {
-                    q.setLockedBy(""); // Ensure newly saved quests are implicitely unlocked
+                    q.setLockedBy("");
                     questMap.put(q.getId(), q);
                 });
 
-                // Final check: unlock any other quests held by this player in this chapter
                 questMap.values().stream().filter(q -> q.getLockedBy().equals(playerName)).forEach(q -> q.setLockedBy(""));
 
-                // 2. Merge Canvas Texts
                 Map<String, CanvasText> textMap = new LinkedHashMap<>();
-                oldChapter.getCanvasTexts().forEach(t -> textMap.put(t.getText() + (int)t.getX() + (int)t.getY(), t));
+                oldChapter.getCanvasTexts().forEach(t -> textMap.put(t.getText() + (int) t.getX() + (int) t.getY(), t));
                 payload.chapter().getCanvasTexts().forEach(t -> textMap.put(t.getText() + t.getX() + t.getY(), t));
 
-                // 3. Merge Canvas Images
                 Map<String, QuestCanvasImage> imgMap = new LinkedHashMap<>();
                 oldChapter.getCanvasImages().forEach(i -> imgMap.put(i.getId(), i));
                 payload.chapter().getCanvasImages().forEach(i -> imgMap.put(i.getId(), i));
@@ -113,16 +109,13 @@ public class ServerPayloadHandler {
             QuestChapter chapter = QuestServerEvents.getQuestManager().getChapters().get(chId);
 
             if (chapter != null) {
-                // FIX: Create a mutable copy of the Quest list to avoid UnsupportedOperationException
                 List<Quest> mutableQuests = new ArrayList<>(chapter.getQuests());
 
-                // Find the target quest to get its tasks for progress cleanup
                 Quest target = mutableQuests.stream().filter(q -> q.getId().equals(payload.questId())).findFirst().orElse(null);
 
                 if (target != null) {
                     mutableQuests.remove(target);
 
-                    // 2. Clear progress for all online players
                     var server = context.player().level().getServer();
                     if (server != null) server.getPlayerList().getPlayers().forEach(p -> {
                         var progress = p.getData(QuestAttachmentRegistry.PLAYER_PROGRESS.get());
@@ -132,7 +125,6 @@ public class ServerPayloadHandler {
                         }
                     });
 
-                    // 3. Rebuild and Save the Chapter
                     QuestChapter updatedChapter = new QuestChapter(
                             chapter.getGroupName(), chapter.getGroupOrder(), chapter.getGroupColor(),
                             chapter.getName(), chapter.getTitle(), chapter.getChapterOrder(),
@@ -154,7 +146,6 @@ public class ServerPayloadHandler {
             Identifier chId = Identifier.fromNamespaceAndPath("simplyquests", payload.chapterName().toLowerCase().replaceAll("[^a-z0-9/._-]", "_"));
             QuestChapter chapter = QuestServerEvents.getQuestManager().getChapters().get(chId);
             if (chapter != null) {
-                // FIX: Create a mutable copy to avoid UnsupportedOperationException
                 List<CanvasText> mutableTexts = new ArrayList<>(chapter.getCanvasTexts());
                 mutableTexts.removeIf(t ->
                         t.getText().equals(payload.text()) &&
@@ -181,23 +172,19 @@ public class ServerPayloadHandler {
         context.enqueueWork(() -> {
             var manager = QuestServerEvents.getQuestManager();
 
-            // 1. Merge Groups: Use a Map to combine existing server groups with the incoming update
             Map<String, QuestGroup> groupMap = new LinkedHashMap<>();
             manager.getGroups().forEach(g -> groupMap.put(g.getName(), g));
-            // Incoming data from client always wins for the groups they sent
             payload.groups().forEach(g -> groupMap.put(g.getName(), g));
 
-            // 2. Merge Root (Standalone) Chapters
             Map<String, SaveGroupsPayload.StandaloneChapterInfo> rootMap = new LinkedHashMap<>();
             manager.getRootChapters().forEach(r -> rootMap.put(r.name(), r));
             payload.rootChapters().forEach(r -> rootMap.put(r.name(), r));
 
-            // 3. Save the merged result
             List<QuestGroup> mergedGroups = new ArrayList<>(groupMap.values());
             List<SaveGroupsPayload.StandaloneChapterInfo> mergedRoots = new ArrayList<>(rootMap.values());
-            
+
             manager.saveGroups(mergedGroups, mergedRoots);
-            
+
             broadcastFullSync();
             QuestServerEvents.refreshAllCaches(((ServerPlayer) context.player()).level().getServer());
         });
@@ -207,21 +194,17 @@ public class ServerPayloadHandler {
         if (!isOp(context)) return;
 
         context.enqueueWork(() -> {
-            Identifier chId = Identifier.fromNamespaceAndPath("simplyquests", payload.chapterName()); // Now receiving ID
+            Identifier chId = Identifier.fromNamespaceAndPath("simplyquests", payload.chapterName());
             String internalId = chId.getPath();
             var manager = QuestServerEvents.getQuestManager();
 
-            // 1. Remove from Standalone list in manifest
             manager.getRootChapters().removeIf(r -> r.name().equals(internalId));
-            // 2. Remove from any Groups in manifest
             manager.getGroups().forEach(g -> g.getChapterNames().remove(internalId));
-            
-            // Wipe progress for all quests in the deleted chapter for all players
+
             QuestChapter chapter = QuestServerEvents.getQuestManager().getChapters().get(chId);
             if (chapter != null && context.player().level().getServer() != null) {
                 var server = context.player().level().getServer();
                 server.getPlayerList().getPlayers().forEach(player -> {
-                    // FIX: Use the correct Supplier constant PLAYER_PROGRESS.get()
                     PlayerQuestProgress progress = player.getData(QuestAttachmentRegistry.PLAYER_PROGRESS.get());
                     for (Quest q : chapter.getQuests()) {
                         progress.getCompletedQuests().remove(q.getId());
@@ -244,13 +227,11 @@ public class ServerPayloadHandler {
         context.enqueueWork(() -> {
             var manager = QuestServerEvents.getQuestManager();
             String targetName = payload.groupName();
-            
-            // 1. Physically remove the group from the server list
+
             manager.getGroups().removeIf(g -> g.getName().equals(Quest.sanitizePath(targetName)) || g.getTitle().equals(targetName));
-            
-            // 2. Save the updated manifest
+
             manager.saveGroups(manager.getGroups(), manager.getRootChapters());
-            
+
             broadcastFullSync();
         });
     }
@@ -259,7 +240,6 @@ public class ServerPayloadHandler {
         if (!isOp(context)) return;
 
         context.enqueueWork(() -> {
-            // Security Check: If somehow the client sent a non-png, reject and notify
             if (!payload.fileName().toLowerCase().endsWith(".png")) {
                 context.reply(new SimpleErrorPayload("Upload rejected: Only .png files are allowed."));
                 return;
@@ -269,7 +249,7 @@ public class ServerPayloadHandler {
                 Path dir = QuestManager.getImagesDirectory();
                 Path target = dir.resolve(payload.fileName());
                 Files.write(target, payload.data());
-                // Note: We don't broadcast the image here; clients will request it via RequestImagePayload when they see the ID in the chapter file
+
             } catch (Exception e) {
                 e.printStackTrace();
             }
@@ -280,7 +260,6 @@ public class ServerPayloadHandler {
         if (!isOp(context)) return;
 
         context.enqueueWork(() -> {
-            // 1. Delete physical file
             try {
                 Path dir = QuestManager.getImagesDirectory();
                 Path target = dir.resolve(payload.imageId());
@@ -289,7 +268,6 @@ public class ServerPayloadHandler {
                 e.printStackTrace();
             }
 
-            // 2. Remove references from ALL chapters to prevent "Smart Merge" from restoring them
             try {
                 var manager = QuestServerEvents.getQuestManager();
                 for (Map.Entry<Identifier, QuestChapter> entry : manager.getChapters().entrySet()) {
@@ -317,9 +295,6 @@ public class ServerPayloadHandler {
     private static void broadcastFullSync() {
         var manager = QuestServerEvents.getQuestManager();
 
-        // FIX: Create snapshots (copies) of the collections.
-        // This prevents ConcurrentModificationException by ensuring the network thread
-        // has its own stable copy of the data that won't change during encoding.
         List<QuestChapter> chaptersSnapshot = new ArrayList<>(manager.getChapters().values());
         List<QuestGroup> groupsSnapshot = new ArrayList<>(manager.getGroups());
 

@@ -6,11 +6,11 @@ import net.minecraft.core.registries.BuiltInRegistries;
 import net.minecraft.world.item.Item;
 import net.minecraft.world.item.ItemStack;
 import net.minecraft.world.item.Items;
+
 import java.util.ArrayList;
 import java.util.List;
 
 public class Quest {
-    // CODEC for saving/loading to JSON
     private record QuestSettings(boolean isOptional, boolean isRepeatable, boolean useTaskIcon) {
         public static final Codec<QuestSettings> CODEC = RecordCodecBuilder.create(inst -> inst.group(
                 Codec.BOOL.fieldOf("isOptional").forGetter(QuestSettings::isOptional),
@@ -22,7 +22,8 @@ public class Quest {
     private record QuestData(String id, String chapterName, String title, String subTitle, String description,
                              double x, double y, QuestShape shape, float size, QuestSettings settings,
                              List<String> dependencies, List<QuestTask> tasks, List<QuestReward> rewards,
-                             String lockedBy, Item logo) {}
+                             String lockedBy, Item logo) {
+    }
 
     private static final Codec<QuestData> DATA_CODEC = RecordCodecBuilder.create(instance -> instance.group(
             Codec.STRING.fieldOf("id").forGetter(QuestData::id),
@@ -47,7 +48,7 @@ public class Quest {
         q.setSubTitle(d.subTitle());
         q.setDescription(d.description());
         q.setShape(d.shape());
-        q.setState(QuestState.LOCKED); // All quests start locked and are unlocked via updateQuestStates()
+        q.setState(QuestState.LOCKED);
         q.setSize(d.size());
         q.setOptional(d.settings().isOptional());
         q.setRepeatable(d.settings().isRepeatable());
@@ -62,7 +63,6 @@ public class Quest {
             q.getX(), q.getY(), q.getShape(), q.getSize(), new QuestSettings(q.isOptional(), q.isRepeatable(), q.isUseTaskIcon()),
             q.getDependencies(), q.getTasks(), q.getRewards(), q.getLockedBy(), q.getLogo()));
 
-    // Core Data
     private String id;
     private String chapterName;
     private String title = " ";
@@ -71,7 +71,6 @@ public class Quest {
     private double x;
     private double y;
 
-    // Editor/UI Properties
     private Item logo = Items.BOOK;
     private QuestShape shape = QuestShape.CIRCLE;
     private float size = 24.0f;
@@ -82,9 +81,8 @@ public class Quest {
     private List<QuestTask> tasks = new ArrayList<>();
     private List<QuestReward> rewards = new ArrayList<>();
     private boolean useTaskIcon = false;
-    private String lockedBy = ""; // Transient field for multiplayer sync
+    private String lockedBy = "";
 
-    // Constructor (Unified)
     public Quest(String id, String chapterName, String title, double x, double y) {
         this.id = id;
         this.chapterName = chapterName;
@@ -93,51 +91,126 @@ public class Quest {
         this.y = y;
     }
 
-    // --- GETTERS & SETTERS ---
-    public String getId() { return id; }
-    public void setId(String id) { this.id = id; }
-    public String getChapterName() { return chapterName; }
-    public void setChapterName(String chapterName) { this.chapterName = chapterName; }
+    public String getId() {
+        return id;
+    }
 
-    public String getLockedBy() { return lockedBy; }
-    public void setLockedBy(String lockedBy) { this.lockedBy = lockedBy; }
+    public void setId(String id) {
+        this.id = id;
+    }
 
-    public String getTitle() { return title; }
-    public void setTitle(String title) { this.title = title; }
+    public String getChapterName() {
+        return chapterName;
+    }
 
-    public String getSubTitle() { return subTitle; }
-    public void setSubTitle(String subTitle) { this.subTitle = subTitle; }
+    public void setChapterName(String chapterName) {
+        this.chapterName = chapterName;
+    }
 
-    public String getDescription() { return description; }
-    public void setDescription(String description) { this.description = description; }
+    public String getLockedBy() {
+        return lockedBy;
+    }
 
-    public double getX() { return x; }
-    public void setX(double x) { this.x = x; }
+    public void setLockedBy(String lockedBy) {
+        this.lockedBy = lockedBy;
+    }
 
-    public double getY() { return y; }
-    public void setY(double y) { this.y = y; }
+    public String getTitle() {
+        return title;
+    }
 
-    public Item getLogo() { return logo; }
-    public void setLogo(Item logo) { this.logo = logo; }
+    public void setTitle(String title) {
+        this.title = title;
+    }
 
-    public QuestShape getShape() { return shape; }
-    public void setShape(QuestShape shape) { this.shape = shape; }
+    public String getSubTitle() {
+        return subTitle;
+    }
 
-    public float getSize() { return size; }
-    public void setSize(float size) { this.size = size; }
+    public void setSubTitle(String subTitle) {
+        this.subTitle = subTitle;
+    }
 
-    public QuestState getState() { return state; }
-    public void setState(QuestState state) { this.state = state; }
+    public String getDescription() {
+        return description;
+    }
 
-    public boolean isOptional() { return isOptional; }
-    public void setOptional(boolean optional) { this.isOptional = optional; }
+    public void setDescription(String description) {
+        this.description = description;
+    }
 
-    public boolean isRepeatable() { return isRepeatable; }
-    public void setRepeatable(boolean repeatable) { this.isRepeatable = repeatable; }
+    public double getX() {
+        return x;
+    }
 
-    public boolean isUseTaskIcon() { return useTaskIcon; }
-    public void setUseTaskIcon(boolean useTaskIcon) { this.useTaskIcon = useTaskIcon; }
-    
+    public void setX(double x) {
+        this.x = x;
+    }
+
+    public double getY() {
+        return y;
+    }
+
+    public void setY(double y) {
+        this.y = y;
+    }
+
+    public Item getLogo() {
+        return logo;
+    }
+
+    public void setLogo(Item logo) {
+        this.logo = logo;
+    }
+
+    public QuestShape getShape() {
+        return shape;
+    }
+
+    public void setShape(QuestShape shape) {
+        this.shape = shape;
+    }
+
+    public float getSize() {
+        return size;
+    }
+
+    public void setSize(float size) {
+        this.size = size;
+    }
+
+    public QuestState getState() {
+        return state;
+    }
+
+    public void setState(QuestState state) {
+        this.state = state;
+    }
+
+    public boolean isOptional() {
+        return isOptional;
+    }
+
+    public void setOptional(boolean optional) {
+        this.isOptional = optional;
+    }
+
+    public boolean isRepeatable() {
+        return isRepeatable;
+    }
+
+    public void setRepeatable(boolean repeatable) {
+        this.isRepeatable = repeatable;
+    }
+
+    public boolean isUseTaskIcon() {
+        return useTaskIcon;
+    }
+
+    public void setUseTaskIcon(boolean useTaskIcon) {
+        this.useTaskIcon = useTaskIcon;
+    }
+
     public static String sanitizePath(String input) {
         return input.toLowerCase().replaceAll("[^a-z0-9/._-]", "_");
     }
@@ -151,7 +224,6 @@ public class Quest {
             String cleanGroup = sanitizePath(group);
             path = String.format("%s/%s/%s", cleanGroup, cleanChapter, cleanTitle);
         } else {
-            // Standalone logic: chapter/quest_name
             path = String.format("%s/%s", cleanChapter, cleanTitle);
         }
 
@@ -159,7 +231,6 @@ public class Quest {
         int index = 0;
         String finalId = baseId;
 
-        // Check for collisions and increment index
         while (idExists(finalId, allQuests)) {
             finalId = baseId + "_" + index;
             index++;
@@ -178,7 +249,7 @@ public class Quest {
                 .orElse(null);
     }
 
-    public Quest (Quest other) {
+    public Quest(Quest other) {
         this.chapterName = other.chapterName;
         this.id = other.id;
         this.title = other.title;
@@ -209,7 +280,6 @@ public class Quest {
         return dependencies;
     }
 
-    // Safe implementation of a setter for a collection
     public void setDependencies(List<String> newDependencies) {
         this.dependencies.clear();
         if (newDependencies != null) {
@@ -226,7 +296,9 @@ public class Quest {
         if (tasks != null) this.tasks.addAll(tasks);
     }
 
-    public List<QuestReward> getRewards() { return rewards; }
+    public List<QuestReward> getRewards() {
+        return rewards;
+    }
 
     public void setRewards(List<QuestReward> rewards) {
         this.rewards.clear();
@@ -245,18 +317,11 @@ public class Quest {
         }
     }
 
-    // Added for completeness—vital for an editor UI!
     public void removeDependency(String questId) {
         this.dependencies.remove(questId);
     }
 
-    /**
-     * Iterates through all tasks to check if an obtained item progresses the quest.
-     * @return true if any task state or progress was changed.
-     */
     public boolean processItemPickup(ItemStack stack) {
-        // Quests only track items if they are currently active (Available or Partial)
-        // If Locked or already Completed, we ignore the input.
         if (this.state == QuestState.LOCKED || this.state == QuestState.COMPLETED) return false;
 
         boolean anyChanged = false;
@@ -265,7 +330,6 @@ public class Quest {
             if (added > 0) {
                 anyChanged = true;
             }
-            // If the item stack is exhausted (fully consumed by a task), stop checking further tasks
             if (stack.isEmpty()) break;
         }
         return anyChanged;

@@ -20,24 +20,18 @@ public class QuestCommands {
 
                 .then(Commands.literal("enableEditMode")
                         .requires(source -> {
-                            // 1. Check if the sender is an actual player
                             if (source.getEntity() instanceof ServerPlayer player) {
-                                // 2. Construct NameAndId from the player's name and UUID
                                 NameAndId identity = new NameAndId(player.getGameProfile().id(), player.getGameProfile().name());
 
-                                // 3. Perform the check
                                 return source.getServer().getPlayerList().isOp(identity);
                             }
-                            // Fallback for console/command blocks
                             return false;
                         })
                         .then(Commands.argument("enabled", BoolArgumentType.bool())
                                 .executes(context -> {
-                                    // Retrieve the boolean value from the argument
                                     boolean newValue = BoolArgumentType.getBool(context, "enabled");
 
                                     if (context.getSource().getEntity() instanceof ServerPlayer player) {
-                                        // FIX: Apply and persist to the specific player's NBT
                                         QuestServerEvents.updateEditModeAndSync(player, newValue);
                                     }
 

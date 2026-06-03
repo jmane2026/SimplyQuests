@@ -17,7 +17,7 @@ public class CanvasText {
     private double y;
     private float scale;
     private int color;
-    private String chapterName; // Transient, used for filtering
+    private String chapterName;
 
     public CanvasText(String text, double x, double y, float scale, int color) {
         this.text = text;
@@ -27,16 +27,51 @@ public class CanvasText {
         this.color = color;
     }
 
-    public String getText() { return text; }
-    public void setText(String text) { this.text = text; }
-    public double getX() { return x; }
-    public void setX(double x) { this.x = x; }
-    public double getY() { return y; }
-    public void setY(double y) { this.y = y; }
-    public float getScale() { return scale; }
-    public void setScale(float scale) { this.scale = scale; }
-    public int getColor() { return color; }
-    public void setColor(int color) { this.color = color; }
-    public String getChapterName() { return chapterName; }
-    public void setChapterName(String chapterName) { this.chapterName = chapterName; }
+    public String getText() {
+        return text;
+    }
+
+    public void setText(String text) {
+        this.text = text;
+    }
+
+    public double getX() {
+        return x;
+    }
+
+    public void setX(double x) {
+        this.x = x;
+    }
+
+    public double getY() {
+        return y;
+    }
+
+    public void setY(double y) {
+        this.y = y;
+    }
+
+    public float getScale() {
+        return scale;
+    }
+
+    public void setScale(float scale) {
+        this.scale = scale;
+    }
+
+    public int getColor() {
+        return color;
+    }
+
+    public void setColor(int color) {
+        this.color = color;
+    }
+
+    public String getChapterName() {
+        return chapterName;
+    }
+
+    public void setChapterName(String chapterName) {
+        this.chapterName = chapterName;
+    }
 }

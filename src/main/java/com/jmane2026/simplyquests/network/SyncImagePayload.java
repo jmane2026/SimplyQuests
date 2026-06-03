@@ -14,5 +14,9 @@ public record SyncImagePayload(String imageId, byte[] data) implements CustomPac
             ByteBufCodecs.BYTE_ARRAY, SyncImagePayload::data,
             SyncImagePayload::new
     );
-    @Override public Type<? extends CustomPacketPayload> type() { return TYPE; }
+
+    @Override
+    public Type<? extends CustomPacketPayload> type() {
+        return TYPE;
+    }
 }

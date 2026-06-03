@@ -11,14 +11,11 @@ public class RewardGiver {
         switch (reward.getType()) {
             case ITEM -> {
                 ItemStack stack = new ItemStack(reward.getItem(), reward.getCount());
-                // add() returns false if the inventory is full
                 if (!player.getInventory().add(stack)) {
-                    // Drop it at the player's feet as a fallback
                     player.drop(stack, false);
                 }
             }
             case XP -> {
-                // awardExperiencePoints for raw XP, or giveExperiencePoints for level-based math
                 player.giveExperiencePoints(reward.getCount());
             }
             case COMMAND -> {

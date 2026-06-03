@@ -1,6 +1,5 @@
 package com.jmane2026.simplyquests.quest;
 
-import java.util.Optional;
 import com.mojang.serialization.Codec;
 import com.mojang.serialization.codecs.RecordCodecBuilder;
 import net.minecraft.core.Holder;
@@ -17,6 +16,7 @@ import net.minecraft.world.item.Items;
 import net.minecraft.world.item.SpawnEggItem;
 
 import java.util.List;
+import java.util.Optional;
 
 public class QuestTask {
 
@@ -29,8 +29,15 @@ public class QuestTask {
         OBSERVE("observe");
 
         private final String name;
-        TaskType(String name) { this.name = name; }
-        @Override public String getSerializedName() { return this.name; }
+
+        TaskType(String name) {
+            this.name = name;
+        }
+
+        @Override
+        public String getSerializedName() {
+            return this.name;
+        }
     }
 
     public enum TaskState implements StringRepresentable {
@@ -39,11 +46,17 @@ public class QuestTask {
         COMPLETE("complete");
 
         private final String name;
-        TaskState(String name) { this.name = name; }
-        @Override public String getSerializedName() { return this.name; }
+
+        TaskState(String name) {
+            this.name = name;
+        }
+
+        @Override
+        public String getSerializedName() {
+            return this.name;
+        }
     }
 
-    // A Codec allows automated JSON parsing and network streaming
     public static final Codec<QuestTask> CODEC = RecordCodecBuilder.create(instance -> instance.group(
             Codec.STRING.fieldOf("id").forGetter(QuestTask::getId),
             StringRepresentable.fromEnum(TaskType::values).fieldOf("type").forGetter(QuestTask::getType),
@@ -60,10 +73,9 @@ public class QuestTask {
     ).apply(instance, (id, type, targetId, name, requiredAmount, isOptional, isRepeatable, consume, tx, ty, tz, isIcon) ->
             new QuestTask(id, type, targetId, name, requiredAmount, 0, isOptional, isRepeatable, consume, TaskState.INCOMPLETE, tx, ty, tz, isIcon)));
 
-
     private String id;
     private TaskType type;
-    private String targetId; // Registry name of Item, Entity, Biome, etc.
+    private String targetId;
     private String name;
     private int requiredAmount;
     private int currentAmount;
@@ -93,53 +105,121 @@ public class QuestTask {
         this.isIcon = isIcon;
     }
 
-    // --- GETTERS & SETTERS ---
-    public String getId() { return id; }
-    public void setId(String id) { this.id = id; }
+    public String getId() {
+        return id;
+    }
 
-    public TaskType getType() { return type; }
-    public void setType(TaskType type) { this.type = type; }
+    public void setId(String id) {
+        this.id = id;
+    }
 
-    public String getTargetId() { return targetId; }
-    public void setTargetId(String targetId) { this.targetId = targetId; }
+    public TaskType getType() {
+        return type;
+    }
 
-    public String getName() { return name; }
-    public void setName(String name) { this.name = name; }
+    public void setType(TaskType type) {
+        this.type = type;
+    }
 
-    public int getRequiredAmount() { return requiredAmount; }
-    public void setRequiredAmount(int requiredAmount) { this.requiredAmount = requiredAmount; }
+    public String getTargetId() {
+        return targetId;
+    }
 
-    public int getCurrentAmount() { return currentAmount; }
-    public void setCurrentAmount(int currentAmount) { this.currentAmount = currentAmount; }
+    public void setTargetId(String targetId) {
+        this.targetId = targetId;
+    }
 
-    public boolean isOptional() { return optional; }
-    public void setOptional(boolean optional) { this.optional = optional; }
+    public String getName() {
+        return name;
+    }
 
-    public boolean isRepeatable() { return repeatable; }
-    public void setRepeatable(boolean repeatable) { this.repeatable = repeatable; }
+    public void setName(String name) {
+        this.name = name;
+    }
 
-    public boolean isConsume() { return consume; }
-    public void setConsume(boolean consume) { this.consume = consume; }
+    public int getRequiredAmount() {
+        return requiredAmount;
+    }
 
-    public TaskState getState() { return state; }
-    public void setState(TaskState state) { this.state = state; }
+    public void setRequiredAmount(int requiredAmount) {
+        this.requiredAmount = requiredAmount;
+    }
 
-    public int getTargetX() { return targetX; }
-    public void setTargetX(int targetX) { this.targetX = targetX; }
+    public int getCurrentAmount() {
+        return currentAmount;
+    }
 
-    public int getTargetY() { return targetY; }
-    public void setTargetY(int targetY) { this.targetY = targetY; }
+    public void setCurrentAmount(int currentAmount) {
+        this.currentAmount = currentAmount;
+    }
 
-    public int getTargetZ() { return targetZ; }
-    public void setTargetZ(int targetZ) { this.targetZ = targetZ; }
+    public boolean isOptional() {
+        return optional;
+    }
 
-    public boolean isIcon() { return isIcon; }
-    public void setIcon(boolean icon) { this.isIcon = icon; }
+    public void setOptional(boolean optional) {
+        this.optional = optional;
+    }
+
+    public boolean isRepeatable() {
+        return repeatable;
+    }
+
+    public void setRepeatable(boolean repeatable) {
+        this.repeatable = repeatable;
+    }
+
+    public boolean isConsume() {
+        return consume;
+    }
+
+    public void setConsume(boolean consume) {
+        this.consume = consume;
+    }
+
+    public TaskState getState() {
+        return state;
+    }
+
+    public void setState(TaskState state) {
+        this.state = state;
+    }
+
+    public int getTargetX() {
+        return targetX;
+    }
+
+    public void setTargetX(int targetX) {
+        this.targetX = targetX;
+    }
+
+    public int getTargetY() {
+        return targetY;
+    }
+
+    public void setTargetY(int targetY) {
+        this.targetY = targetY;
+    }
+
+    public int getTargetZ() {
+        return targetZ;
+    }
+
+    public void setTargetZ(int targetZ) {
+        this.targetZ = targetZ;
+    }
+
+    public boolean isIcon() {
+        return isIcon;
+    }
+
+    public void setIcon(boolean icon) {
+        this.isIcon = icon;
+    }
 
     public ItemStack getIconStack() {
         try {
             String raw = this.targetId;
-            // FIX: If it's a tag, strip the # before parsing the Identifier
             if (raw.startsWith("#")) {
                 raw = raw.substring(1);
             }
@@ -152,7 +232,6 @@ public class QuestTask {
                     if (this.targetId.startsWith("#")) {
                         try {
                             TagKey<EntityType<?>> tagKey = TagKey.create(net.minecraft.core.registries.Registries.ENTITY_TYPE, loc);
-                            // Resolve the first valid mob in the tag to find a spawn egg icon
                             EntityType<?> firstMatch = BuiltInRegistries.ENTITY_TYPE.get(tagKey)
                                     .flatMap(set -> set.stream()
                                             .map(Holder::value)
@@ -161,26 +240,24 @@ public class QuestTask {
 
                             if (firstMatch != null) {
                                 for (Item i : BuiltInRegistries.ITEM) {
-                                    if (i instanceof SpawnEggItem egg && egg.getType(ItemStack.EMPTY) == firstMatch) yield new ItemStack(i);
+                                    if (i instanceof SpawnEggItem egg && egg.getType(ItemStack.EMPTY) == firstMatch)
+                                        yield new ItemStack(i);
                                 }
                             }
-                        } catch (Exception ignored) {}
+                        } catch (Exception ignored) {
+                        }
                     }
 
                     Optional<Holder.Reference<EntityType<?>>> entityHolder = BuiltInRegistries.ENTITY_TYPE.get(loc);
                     if (entityHolder.isPresent()) {
                         Object rawValue = entityHolder.get().value();
                         EntityType<?> type;
-                        
-                        // Use isPresent/get to bypass capture ? issues with orElse
+
                         if (rawValue instanceof Optional<?> opt) {
                             type = opt.isPresent() ? (EntityType<?>) opt.get() : null;
-                        }
-                        else type = (EntityType<?>) rawValue;
+                        } else type = (EntityType<?>) rawValue;
 
                         if (type != null) {
-                            // Loop through all items to find the corresponding Spawn Egg
-                            // This bypasses .byId(), .fromEntity(), and all mapping conflicts
                             for (Item i : BuiltInRegistries.ITEM) {
                                 if (i instanceof SpawnEggItem egg && egg.getType(ItemStack.EMPTY) == type) {
                                     yield new ItemStack(i);
@@ -188,7 +265,7 @@ public class QuestTask {
                             }
                         }
                     }
-                    yield new ItemStack(Items.IRON_SWORD); // Generic fallback for modded mobs without eggs
+                    yield new ItemStack(Items.IRON_SWORD);
                 }
                 case BIOME -> new ItemStack(Items.GRASS_BLOCK);
                 case ITEM, OBSERVE -> {
@@ -199,18 +276,16 @@ public class QuestTask {
                                     .flatMap(set -> set.stream().findFirst())
                                     .map(Holder::value);
                             if (firstItem.isPresent()) yield new ItemStack(firstItem.get());
-                        } catch (Exception ignored) {}
+                        } catch (Exception ignored) {
+                        }
                     }
 
-                    // Try to find a direct item/block first
                     Optional<Item> item = BuiltInRegistries.ITEM.get(loc).map(Holder::value);
                     if (item.isPresent() && item.get() != Items.AIR) yield new ItemStack(item.get());
 
-                    // FIX: Fallback to Block Registry for technical blocks (Cauldrons, wall signs, etc.)
                     Optional<Item> blockItem = BuiltInRegistries.BLOCK.get(loc).map(h -> h.value().asItem());
                     if (blockItem.isPresent() && blockItem.get() != Items.AIR) yield new ItemStack(blockItem.get());
 
-                    // FIX: Handle itemless technical blocks (Liquids, Fire, etc.)
                     if (loc.getNamespace().equals("minecraft")) {
                         String path = loc.getPath();
                         if (path.contains("water")) yield new ItemStack(Items.WATER_BUCKET);
@@ -220,7 +295,6 @@ public class QuestTask {
                         if (path.equals("nether_portal")) yield new ItemStack(Items.NETHER_BRICK);
                     }
 
-                    // If not an item, check if it's an entity (for Spawn Eggs) - useful for OBSERVE mobs
                     Optional<Holder.Reference<EntityType<?>>> entityHolder = BuiltInRegistries.ENTITY_TYPE.get(loc);
                     if (entityHolder.isPresent()) {
                         EntityType<?> type = entityHolder.get().value();
@@ -236,7 +310,6 @@ public class QuestTask {
                 case CHECKBOX -> new ItemStack(Items.PAPER);
             };
         } catch (Exception e) {
-            // Fallback for invalid Identifiers
             return switch (this.type) {
                 case ITEM -> new ItemStack(Items.BARRIER);
                 case OBSERVE -> new ItemStack(Items.SPYGLASS);
@@ -309,7 +382,7 @@ public class QuestTask {
         int suffix = 0;
         String candidateId = baseId;
         while (true) {
-            String checkId = candidateId; // Effectively final copy for the lambda
+            String checkId = candidateId;
             if (existingTasks.stream().noneMatch(t -> t.getId().equals(checkId))) {
                 return checkId;
             }
@@ -317,15 +390,9 @@ public class QuestTask {
         }
     }
 
-    /**
-     * Processes an incoming item stack against this task.
-     * @return The amount of items actually used/added to progress.
-     */
     public int handleItemAddition(ItemStack stack) {
-        // Only process if it's an ITEM task and not already finished
         if (this.type != TaskType.ITEM || this.state == TaskState.COMPLETE) return 0;
 
-        // FIX: Implement Tag matching logic for automatic item additions
         boolean matches;
         if (this.targetId.startsWith("#")) {
             try {
@@ -346,11 +413,9 @@ public class QuestTask {
 
             if (toAdd > 0) {
                 this.currentAmount += toAdd;
-                
-                // Transition state
+
                 this.state = (this.currentAmount >= this.requiredAmount) ? TaskState.COMPLETE : TaskState.PARTIAL;
 
-                // Handle physical item removal if specified in the editor
                 if (this.consume) {
                     stack.shrink(toAdd);
                 }

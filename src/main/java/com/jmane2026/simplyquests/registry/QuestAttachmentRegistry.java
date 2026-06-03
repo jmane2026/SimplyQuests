@@ -12,8 +12,6 @@ public class QuestAttachmentRegistry {
     public static final DeferredRegister<AttachmentType<?>> ATTACHMENT_TYPES =
             DeferredRegister.create(NeoForgeRegistries.Keys.ATTACHMENT_TYPES, SimplyQuests.MODID);
 
-    // This defines the "player_progress" attachment.
-    // .copyOnDeath() ensures progress isn't lost when the player dies.
     public static final Supplier<AttachmentType<PlayerQuestProgress>> PLAYER_PROGRESS =
             ATTACHMENT_TYPES.register("player_progress", () -> AttachmentType.builder(PlayerQuestProgress::new)
                     .serialize(PlayerQuestProgress.CODEC)

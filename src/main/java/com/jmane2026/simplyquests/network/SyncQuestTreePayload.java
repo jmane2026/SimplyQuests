@@ -9,13 +9,14 @@ import net.minecraft.resources.Identifier;
 
 import java.util.List;
 
-public record SyncQuestTreePayload(List<QuestChapter> chapters, List<QuestGroup> groups) implements CustomPacketPayload {
+public record SyncQuestTreePayload(List<QuestChapter> chapters,
+                                   List<QuestGroup> groups) implements CustomPacketPayload {
     public static final Type<SyncQuestTreePayload> TYPE = new Type<>(Identifier.fromNamespaceAndPath("simplyquests", "sync_quest_tree"));
     public static final StreamCodec<FriendlyByteBuf, SyncQuestTreePayload> CODEC = CustomPacketPayload.codec(SyncQuestTreePayload::write, SyncQuestTreePayload::new);
 
     public SyncQuestTreePayload(FriendlyByteBuf buf) {
         this(buf.readList(b -> b.readLenientJsonWithCodec(QuestChapter.CODEC)),
-             buf.readList(b -> b.readLenientJsonWithCodec(QuestGroup.CODEC)));
+                buf.readList(b -> b.readLenientJsonWithCodec(QuestGroup.CODEC)));
     }
 
     public void write(FriendlyByteBuf buf) {

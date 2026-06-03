@@ -10,7 +10,6 @@ import net.neoforged.neoforge.network.registration.PayloadRegistrar;
 
 public class QuestNetworkRegistry {
     public static void register(final RegisterPayloadHandlersEvent event) {
-        // Using a constant version string is the recommended pattern in 26.1
         final PayloadRegistrar registrar = event.registrar("1");
 
         boolean isClient = FMLEnvironment.getDist() == Dist.CLIENT;
@@ -18,13 +17,15 @@ public class QuestNetworkRegistry {
         registrar.playToClient(
                 SyncQuestProgressPayload.TYPE,
                 SyncQuestProgressPayload.STREAM_CODEC,
-                isClient ? SimplyQuestsClientPacketHandler::handleSyncProgress : (p, c) -> {}
+                isClient ? SimplyQuestsClientPacketHandler::handleSyncProgress : (p, c) -> {
+                }
         );
 
         registrar.playToClient(
                 SyncPlayerProgressPayload.TYPE,
                 SyncPlayerProgressPayload.STREAM_CODEC,
-                isClient ? SimplyQuestsClientPacketHandler::handleSyncPlayerProgress : (p, c) -> {}
+                isClient ? SimplyQuestsClientPacketHandler::handleSyncPlayerProgress : (p, c) -> {
+                }
         );
 
         registrar.playToServer(
@@ -36,13 +37,15 @@ public class QuestNetworkRegistry {
         registrar.playToClient(
                 QuestCompletedPayload.TYPE,
                 QuestCompletedPayload.STREAM_CODEC,
-                isClient ? SimplyQuestsClientPacketHandler::handleQuestCompleted : (p, c) -> {}
+                isClient ? SimplyQuestsClientPacketHandler::handleQuestCompleted : (p, c) -> {
+                }
         );
 
         registrar.playToClient(
                 ChapterCompletedPayload.TYPE,
                 ChapterCompletedPayload.STREAM_CODEC,
-                isClient ? SimplyQuestsClientPacketHandler::handleChapterCompleted : (p, c) -> {}
+                isClient ? SimplyQuestsClientPacketHandler::handleChapterCompleted : (p, c) -> {
+                }
         );
 
         registrar.playToServer(
@@ -72,7 +75,8 @@ public class QuestNetworkRegistry {
         registrar.playToClient(
                 SyncChapterPayload.TYPE,
                 SyncChapterPayload.STREAM_CODEC,
-                isClient ? SimplyQuestsClientPacketHandler::handleSyncChapter : (p, c) -> {}
+                isClient ? SimplyQuestsClientPacketHandler::handleSyncChapter : (p, c) -> {
+                }
         );
 
         registrar.playToServer(
@@ -84,7 +88,8 @@ public class QuestNetworkRegistry {
         registrar.playToClient(
                 SyncImagePayload.TYPE,
                 SyncImagePayload.STREAM_CODEC,
-                isClient ? SimplyQuestsClientPacketHandler::handleSyncImage : (p, c) -> {}
+                isClient ? SimplyQuestsClientPacketHandler::handleSyncImage : (p, c) -> {
+                }
         );
 
         registrar.playToServer(

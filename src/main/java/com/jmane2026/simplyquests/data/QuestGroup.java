@@ -32,10 +32,27 @@ public class QuestGroup {
         this.chapterNames = new ArrayList<>(chapterNames);
     }
 
-    public String getName() { return name; }
-    public String getTitle() { return title; }
-    public int getColor() { return color; }
-    public int getOrder() { return order; }
-    public boolean isExpanded() { return expanded; }
-    public List<String> getChapterNames() { return chapterNames; }
+    public String getName() {
+        return name;
+    }
+
+    public String getTitle() {
+        return title;
+    }
+
+    public int getColor() {
+        return color;
+    }
+
+    public int getOrder() {
+        return order;
+    }
+
+    public boolean isExpanded() {
+        return expanded;
+    }
+
+    public List<String> getChapterNames() {
+        return chapterNames;
+    }
 }

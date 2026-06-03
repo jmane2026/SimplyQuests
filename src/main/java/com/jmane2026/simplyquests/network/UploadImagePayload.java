@@ -14,5 +14,9 @@ public record UploadImagePayload(String fileName, byte[] data) implements Custom
             ByteBufCodecs.BYTE_ARRAY, UploadImagePayload::data,
             UploadImagePayload::new
     );
-    @Override public Type<? extends CustomPacketPayload> type() { return TYPE; }
+
+    @Override
+    public Type<? extends CustomPacketPayload> type() {
+        return TYPE;
+    }
 }

@@ -4,8 +4,6 @@ import com.jmane2026.simplyquests.SimplyQuests;
 import com.jmane2026.simplyquests.data.QuestChapter;
 import com.jmane2026.simplyquests.data.QuestManager;
 import com.jmane2026.simplyquests.network.*;
-import com.mojang.logging.LogUtils;
-import com.jmane2026.simplyquests.quest.QuestGlobalState;
 import com.jmane2026.simplyquests.player.PlayerQuestProgress;
 import com.jmane2026.simplyquests.quest.Quest;
 import com.jmane2026.simplyquests.quest.QuestReward;
@@ -13,28 +11,24 @@ import com.jmane2026.simplyquests.quest.QuestTask;
 import com.jmane2026.simplyquests.registry.QuestAttachmentRegistry;
 import com.jmane2026.simplyquests.util.QuestSyncHelper;
 import com.jmane2026.simplyquests.util.RewardGiver;
+import com.mojang.logging.LogUtils;
 import net.minecraft.core.Holder;
-import net.minecraft.core.registries.Registries;
-import net.minecraft.server.MinecraftServer;
 import net.minecraft.core.registries.BuiltInRegistries;
-import net.minecraft.resources.ResourceKey;
-import net.minecraft.server.level.ServerPlayer;
+import net.minecraft.core.registries.Registries;
 import net.minecraft.resources.Identifier;
+import net.minecraft.resources.ResourceKey;
+import net.minecraft.server.MinecraftServer;
+import net.minecraft.server.level.ServerPlayer;
 import net.minecraft.server.players.NameAndId;
+import net.minecraft.tags.TagKey;
 import net.minecraft.world.entity.EntityType;
 import net.minecraft.world.entity.player.Inventory;
-import net.minecraft.tags.TagKey;
 import net.minecraft.world.entity.projectile.ProjectileUtil;
-import net.minecraft.world.level.block.Block;
-import net.minecraft.world.phys.BlockHitResult;
-import net.minecraft.world.phys.EntityHitResult;
-import net.minecraft.world.phys.HitResult;
-import net.minecraft.world.phys.AABB;
-import net.minecraft.world.phys.Vec3;
 import net.minecraft.world.item.Item;
 import net.minecraft.world.item.ItemStack;
 import net.minecraft.world.item.Items;
-import net.neoforged.neoforge.network.handling.IPayloadContext;
+import net.minecraft.world.level.block.Block;
+import net.minecraft.world.phys.*;
 import net.neoforged.bus.api.SubscribeEvent;
 import net.neoforged.neoforge.event.AddServerReloadListenersEvent;
 import net.neoforged.neoforge.event.entity.living.LivingDeathEvent;
@@ -42,22 +36,18 @@ import net.neoforged.neoforge.event.entity.player.ItemEntityPickupEvent;
 import net.neoforged.neoforge.event.entity.player.PlayerEvent;
 import net.neoforged.neoforge.event.tick.PlayerTickEvent;
 import net.neoforged.neoforge.network.PacketDistributor;
+import net.neoforged.neoforge.network.handling.IPayloadContext;
 import org.slf4j.Logger;
 
-import java.util.ArrayList;
-import java.util.HashMap;
-import java.util.List;
 import java.nio.file.Files;
 import java.nio.file.Path;
-import java.util.Map;
-import java.util.UUID;
+import java.util.*;
 
 public class QuestServerEvents {
     private static final Logger LOGGER = LogUtils.getLogger();
 
     private static final QuestManager QUEST_MANAGER = new QuestManager();
 
-    // Optimization: Cache of quests that are currently "Eligible" for item auto-sync per player
     private static final Map<UUID, List<Quest>> ACTIVE_ITEM_CACHE = new HashMap<>();
 
     @SubscribeEvent
@@ -75,42 +65,32 @@ public class QuestServerEvents {
     @SubscribeEvent
     public static void onPlayerLogin(PlayerEvent.PlayerLoggedInEvent event) {
         if (event.getEntity() instanceof ServerPlayer player) {
-            // 1. Sync the Quest Tree (Groups and Chapters) so the sidebar isn't empty
             PacketDistributor.sendToPlayer(player, new SyncQuestTreePayload(
                     new ArrayList<>(QUEST_MANAGER.getChapters().values()),
                     QUEST_MANAGER.getGroups()
             ));
 
-            // Centralize the login sync using our helper
             QuestSyncHelper.syncPlayerProgress(player);
             rebuildActiveQuestCache(player);
             syncAndCheckCompletions(player);
             PlayerQuestProgress progress = player.getData(QuestAttachmentRegistry.PLAYER_PROGRESS);
 
-            // Sync OP status for Edit Mode security
             NameAndId identity = new NameAndId(player.getGameProfile().id(), player.getGameProfile().name());
             boolean isOp = player.level().getServer().getPlayerList().isOp(identity);
             PacketDistributor.sendToPlayer(player, new SyncOpStatusPayload(isOp, progress.isEditMode()));
         }
     }
 
-    /**
-     * Updates the edit mode for a specific player and persists it to their NBT.
-     */
     public static void updateEditModeAndSync(ServerPlayer player, boolean enabled) {
         PlayerQuestProgress progress = player.getData(QuestAttachmentRegistry.PLAYER_PROGRESS);
         progress.setEditMode(enabled);
-        player.setData(QuestAttachmentRegistry.PLAYER_PROGRESS, progress); // Save to NBT
+        player.setData(QuestAttachmentRegistry.PLAYER_PROGRESS, progress);
 
         NameAndId identity = new NameAndId(player.getGameProfile().id(), player.getGameProfile().name());
         boolean isOp = player.level().getServer().getPlayerList().isOp(identity);
         PacketDistributor.sendToPlayer(player, new SyncOpStatusPayload(isOp, enabled));
     }
 
-    /**
-     * Rebuilds the item cache for all online players. 
-     * Crucial to call this after any quest tree structure changes (saves/renames).
-     */
     public static void refreshAllCaches(MinecraftServer server) {
         for (ServerPlayer player : server.getPlayerList().getPlayers()) {
             rebuildActiveQuestCache(player);
@@ -119,7 +99,7 @@ public class QuestServerEvents {
 
     @SubscribeEvent
     public static void onPlayerLogout(PlayerEvent.PlayerLoggedOutEvent event) {
-        // Memory Cleanup: Prevent the map from growing indefinitely
+
         ACTIVE_ITEM_CACHE.remove(event.getEntity().getUUID());
     }
 
@@ -131,7 +111,8 @@ public class QuestServerEvents {
                         .findFirst().orElse(null);
 
                 PlayerQuestProgress progress = player.getData(QuestAttachmentRegistry.PLAYER_PROGRESS);
-                if (quest == null || progress.isQuestComplete(quest.getId()) || !isQuestUnlocked(quest, progress)) return;
+                if (quest == null || progress.isQuestComplete(quest.getId()) || !isQuestUnlocked(quest, progress))
+                    return;
 
                 QuestTask task = quest.getTasks().stream()
                         .filter(t -> t.getId().equals(payload.taskId()))
@@ -157,7 +138,6 @@ public class QuestServerEvents {
                 int needed = task.getRequiredAmount() - current;
                 int foundCount = 0;
 
-                // 1. Check the mouse cursor (Carried Stack)
                 ItemStack carried = player.containerMenu.getCarried();
                 if (!carried.isEmpty() && itemMatcher.test(carried)) {
                     int toTake = Math.min(carried.getCount(), needed - foundCount);
@@ -165,7 +145,6 @@ public class QuestServerEvents {
                     foundCount += toTake;
                 }
 
-                // 2. Scan and remove from main inventory slots
                 Inventory inv = player.getInventory();
                 for (int i = 0; i < inv.getContainerSize() && foundCount < needed; i++) {
                     ItemStack stack = inv.getItem(i);
@@ -179,7 +158,7 @@ public class QuestServerEvents {
 
                 if (foundCount > 0) {
                     progress.setTaskAmount(task.getId(), current + foundCount);
-                    player.setData(QuestAttachmentRegistry.PLAYER_PROGRESS, progress); // FORCE NBT SAVE
+                    player.setData(QuestAttachmentRegistry.PLAYER_PROGRESS, progress);
                     syncAndCheckCompletions(player);
                 }
             }
@@ -196,26 +175,18 @@ public class QuestServerEvents {
                 PlayerQuestProgress progress = player.getData(QuestAttachmentRegistry.PLAYER_PROGRESS);
 
                 if (!payload.complete()) {
-                    // --- RESET LOGIC ---
-                    // 1. A quest cannot be complete if any part of it was reset
                     String qId = quest.getId();
                     progress.getCompletedQuests().remove(qId);
 
-                    // 2. Unclaim rewards specifically for THIS quest.
-                    // We check for the exact ID or the questID followed by a slash to prevent 
-                    // accidental wipes of quests with similar prefixes (e.g., 'test' vs 'test_2')
                     progress.getClaimedRewards().removeIf(id -> id.equals(qId) || id.startsWith(qId + "/"));
 
                     if (payload.taskId().isPresent()) {
-                        // Reset specific task
                         progress.setTaskAmount(payload.taskId().get(), 0);
                     } else {
-                        // Reset ALL tasks if the whole quest was targeted
                         for (QuestTask task : quest.getTasks()) {
                             progress.resetTaskProgress(task.getId());
                         }
 
-                        // If this quest was part of a completed chapter, reset the chapter completion as well
                         String chName = quest.getChapterName();
                         QuestChapter chapter = QUEST_MANAGER.getChapters().values().stream()
                                 .filter(c -> c.getName().equals(chName))
@@ -225,7 +196,7 @@ public class QuestServerEvents {
                         }
                     }
                 } else {
-                    // --- ADMIN FORCE-COMPLETE LOGIC ---
+
                     if (payload.taskId().isPresent()) {
                         QuestTask task = quest.getTasks().stream().filter(t -> t.getId().equals(payload.taskId().get())).findFirst().orElse(null);
                         if (task != null) progress.setTaskAmount(task.getId(), task.getRequiredAmount());
@@ -239,7 +210,6 @@ public class QuestServerEvents {
 
                 player.setData(QuestAttachmentRegistry.PLAYER_PROGRESS, progress);
                 syncAndCheckCompletions(player);
-                // Re-scan inventory only if the whole quest was reset, to avoid immediate re-completion stutters
                 if (!payload.complete() && payload.taskId().isEmpty()) processItemAcquisition(player, ItemStack.EMPTY);
             }
         });
@@ -255,26 +225,22 @@ public class QuestServerEvents {
                 boolean chapterReset = payload.chapterName().isPresent();
                 List<QuestChapter> targets = new ArrayList<>();
 
-                // 1. Identify which chapters need resetting
                 if (groupReset) {
                     String targetGroupId = payload.groupName().get();
-                    // We compare against the groupName field, which we ensured is sanitized during saves
                     targets = chapters.stream().filter(c -> c.getGroupName().equals(targetGroupId)).toList();
                 } else if (chapterReset) {
                     String targetChapterId = payload.chapterName().get();
                     targets = chapters.stream().filter(c -> c.getName().equals(targetChapterId)).toList();
                 }
 
-                // 2. Reset progress for all quests in those chapters
                 for (QuestChapter ch : targets) {
                     progress.resetChapter(ch.getName());
                     for (Quest questInChapter : ch.getQuests()) {
                         String qId = questInChapter.getId();
                         progress.resetQuest(qId);
-                        
-                        // Fix greedy prefix matching for bulk unclaiming
+
                         progress.getClaimedRewards().removeIf(id -> id.equals(qId) || id.startsWith(qId + "/"));
-                        
+
                         for (QuestTask task : questInChapter.getTasks()) {
                             progress.resetTaskProgress(task.getId());
                         }
@@ -283,8 +249,7 @@ public class QuestServerEvents {
 
                 player.setData(QuestAttachmentRegistry.PLAYER_PROGRESS, progress);
                 syncAndCheckCompletions(player);
-                
-                // FIX: Immediately re-scan inventory after a group/chapter reset
+
                 processItemAcquisition(player, ItemStack.EMPTY);
             }
         });
@@ -298,7 +263,7 @@ public class QuestServerEvents {
                         .findFirst().orElse(null);
 
                 PlayerQuestProgress progress = player.getData(QuestAttachmentRegistry.PLAYER_PROGRESS);
-                // Allow toggling unless the quest doesn't exist or is locked
+
                 if (quest == null || !isQuestUnlocked(quest, progress)) return;
 
                 QuestTask task = quest.getTasks().stream()
@@ -306,13 +271,12 @@ public class QuestServerEvents {
                         .findFirst().orElse(null);
 
                 if (task == null || task.getType() != QuestTask.TaskType.CHECKBOX) return;
-                
-                // Only allow completion (0 -> required), do not allow "uncompleting" via player click
+
                 if (progress.getTaskAmount(task.getId()) >= task.getRequiredAmount()) return;
 
                 int current = progress.getTaskAmount(task.getId());
                 progress.setTaskAmount(task.getId(), current >= task.getRequiredAmount() ? 0 : task.getRequiredAmount());
-                player.setData(QuestAttachmentRegistry.PLAYER_PROGRESS, progress); // FORCE NBT SAVE
+                player.setData(QuestAttachmentRegistry.PLAYER_PROGRESS, progress);
 
                 syncAndCheckCompletions(player);
             }
@@ -348,7 +312,7 @@ public class QuestServerEvents {
                         int current = progress.getTaskAmount(task.getId());
                         if (current < task.getRequiredAmount()) {
                             progress.setTaskAmount(task.getId(), current + 1);
-                            player.setData(QuestAttachmentRegistry.PLAYER_PROGRESS, progress); // FORCE NBT SAVE
+                            player.setData(QuestAttachmentRegistry.PLAYER_PROGRESS, progress);
                             progressMade = true;
                         }
                     }
@@ -363,16 +327,15 @@ public class QuestServerEvents {
 
     @SubscribeEvent
     public static void onPlayerTick(PlayerTickEvent.Post event) {
-        // Run checks every 20 ticks (1 second) to save CPU
+
         if (event.getEntity() instanceof ServerPlayer player) {
             if (player.tickCount % 20 != 0) return;
 
             List<Quest> allQuests = QUEST_MANAGER.getAllQuests();
-            
+
             boolean progressMade = false;
             PlayerQuestProgress progress = player.getData(QuestAttachmentRegistry.PLAYER_PROGRESS);
-            
-            // In 26.1, Biomes are Holders. We unwrap the key and map it to get the Identifier directly.
+
             Identifier currentBiome = player.level().getBiome(player.blockPosition())
                     .unwrapKey().map(ResourceKey::identifier).orElse(null);
 
@@ -388,18 +351,16 @@ public class QuestServerEvents {
                     if (task.getType() == QuestTask.TaskType.BIOME && currentBiome != null) {
                         if (task.getTargetId().equals(currentBiome.toString())) {
                             progress.setTaskAmount(task.getId(), 1);
-                            player.setData(QuestAttachmentRegistry.PLAYER_PROGRESS, progress); // FORCE NBT SAVE
+                            player.setData(QuestAttachmentRegistry.PLAYER_PROGRESS, progress);
                             progressMade = true;
                         }
                     } else if (task.getType() == QuestTask.TaskType.OBSERVE) {
-                        // Perform a hybrid raytrace to detect both Blocks/Fluids and Entities (Range: 20 blocks)
+
                         double range = 20.0;
                         float partialTicks = 0.0f;
-                        
-                        // 1. Check for Blocks and Fluids (liquids enabled)
+
                         HitResult blockHit = player.pick(range, partialTicks, true);
-                        
-                        // 2. Check for Entities along the same look vector
+
                         Vec3 eyePos = player.getEyePosition(1.0f);
                         Vec3 viewVec = player.getViewVector(partialTicks);
                         Vec3 reachVec = eyePos.add(viewVec.scale(range));
@@ -411,7 +372,6 @@ public class QuestServerEvents {
                         boolean matched = false;
                         String debugHitId = "Nothing";
 
-                        // 1. Check Entities
                         if (entityHit != null) {
                             EntityType<?> type = entityHit.getEntity().getType();
                             debugHitId = BuiltInRegistries.ENTITY_TYPE.getKey(type).toString();
@@ -423,11 +383,10 @@ public class QuestServerEvents {
                             }
                         }
 
-                        // 2. Check Blocks/Fluids (If entity didn't already match)
                         if (!matched && blockHit.getType() == HitResult.Type.BLOCK) {
-                            var state = player.level().getBlockState(((BlockHitResult)blockHit).getBlockPos());
+                            var state = player.level().getBlockState(((BlockHitResult) blockHit).getBlockPos());
                             debugHitId = BuiltInRegistries.BLOCK.getKey(state.getBlock()).toString();
-                            
+
                             if (isTag) {
                                 TagKey<Block> tagKey = TagKey.create(Registries.BLOCK, Identifier.parse(target.substring(1)));
                                 if (state.is(tagKey)) matched = true;
@@ -435,8 +394,7 @@ public class QuestServerEvents {
                                 matched = true;
                             }
                         }
-                        
-                        // FIX: Actually apply the progress if matched
+
                         if (matched) {
                             progress.setTaskAmount(task.getId(), 1);
                             player.setData(QuestAttachmentRegistry.PLAYER_PROGRESS, progress);
@@ -444,10 +402,10 @@ public class QuestServerEvents {
                         }
                     } else if (task.getType() == QuestTask.TaskType.LOCATION) {
                         double distSq = player.blockPosition().distSqr(new net.minecraft.core.Vec3i(task.getTargetX(), task.getTargetY(), task.getTargetZ()));
-                        // If player is within 4 blocks of the target coordinate
+
                         if (distSq <= 16.0) {
                             progress.setTaskAmount(task.getId(), 1);
-                            player.setData(QuestAttachmentRegistry.PLAYER_PROGRESS, progress); // FORCE NBT SAVE
+                            player.setData(QuestAttachmentRegistry.PLAYER_PROGRESS, progress);
                             progressMade = true;
                         }
                     }
@@ -462,7 +420,8 @@ public class QuestServerEvents {
 
     @SubscribeEvent
     public static void onPlayerPickup(ItemEntityPickupEvent.Post event) {
-        if (event.getPlayer() instanceof ServerPlayer player) processItemAcquisition(player, event.getItemEntity().getItem());
+        if (event.getPlayer() instanceof ServerPlayer player)
+            processItemAcquisition(player, event.getItemEntity().getItem());
     }
 
     @SubscribeEvent
@@ -479,29 +438,25 @@ public class QuestServerEvents {
         }
     }
 
-    /**
-     * Re-calculates which quests have non-consuming item tasks and are currently unlocked for the player.
-     */
     private static void rebuildActiveQuestCache(ServerPlayer player) {
         PlayerQuestProgress progress = player.getData(QuestAttachmentRegistry.PLAYER_PROGRESS);
-        
+
         List<Quest> eligible = QUEST_MANAGER.getAllQuests().stream()
                 .filter(q -> !progress.isQuestComplete(q.getId()))
                 .filter(q -> isQuestUnlocked(q, progress))
                 .filter(q -> q.getTasks().stream().anyMatch(t -> t.getType() == QuestTask.TaskType.ITEM && !t.isConsume()))
                 .toList();
-        
+
         ACTIVE_ITEM_CACHE.put(player.getUUID(), eligible);
     }
 
     private static void processItemAcquisition(ServerPlayer player, ItemStack stack) {
-        // The 'stack' argument is our heartbeat. We ignore its type and perform a full inventory reconciliation.
+
         Inventory inventory = player.getInventory();
         PlayerQuestProgress progress = player.getData(QuestAttachmentRegistry.PLAYER_PROGRESS);
 
         Map<Item, Integer> inventoryCounts = new HashMap<>();
 
-        // 1. Build a map of current inventory counts (Source of Truth)
         for (int i = 0; i < inventory.getContainerSize(); i++) {
             ItemStack invStack = inventory.getItem(i);
             if (!invStack.isEmpty()) {
@@ -510,8 +465,6 @@ public class QuestServerEvents {
             }
         }
 
-        // 1b. Include the item currently held on the mouse cursor (The "Carried" stack)
-        // This ensures items manually picked up from crafting/containers are detected immediately.
         ItemStack carried = player.containerMenu.getCarried();
         if (!carried.isEmpty()) {
             Item item = carried.getItem();
@@ -521,18 +474,16 @@ public class QuestServerEvents {
         List<Quest> activeQuests = ACTIVE_ITEM_CACHE.getOrDefault(player.getUUID(), List.of());
         boolean repeat;
 
-        // 2. Process tasks and handle chain reactions
         do {
             repeat = false;
             boolean progressMadeThisPass = false;
 
             for (Quest quest : activeQuests) {
-                // We don't need isUnlocked check here anymore as the cache only contains unlocked quests
 
                 for (QuestTask task : quest.getTasks()) {
-                    // Only auto-sync non-consuming ITEM tasks
+
                     if (task.getType() != QuestTask.TaskType.ITEM || task.isConsume()) continue;
-                    
+
                     String rawTarget = task.getTargetId();
                     int totalInInventory = 0;
 
@@ -551,7 +502,7 @@ public class QuestServerEvents {
 
                     if (progress.getTaskAmount(task.getId()) != totalInInventory) {
                         progress.setTaskAmount(task.getId(), totalInInventory);
-                        player.setData(QuestAttachmentRegistry.PLAYER_PROGRESS, progress); // FORCE NBT SAVE
+                        player.setData(QuestAttachmentRegistry.PLAYER_PROGRESS, progress);
                         progressMadeThisPass = true;
                     }
                 }
@@ -562,70 +513,56 @@ public class QuestServerEvents {
         } while (repeat);
     }
 
-    /**
-     * Centralized logic to sync tasks and trigger Quest/Chapter completion toasts.
-     */
     private static boolean syncAndCheckCompletions(ServerPlayer player) {
         PlayerQuestProgress progress = player.getData(QuestAttachmentRegistry.PLAYER_PROGRESS);
         QuestManager.CompletionResults results = QUEST_MANAGER.updateQuestStates(progress);
 
-        // 1. Send Toasts for Quests
         for (Quest q : results.quests()) {
             ItemStack toastIcon = ItemStack.EMPTY;
 
-            // FIX: If "Use Task Icon" is enabled, we MUST resolve the task's icon first,
-            // ignoring any manual icon that might be saved in the quest's logo field.
             if (q.isUseTaskIcon() && !q.getTasks().isEmpty()) {
                 QuestTask firstTask = q.getTasks().get(0);
                 if (firstTask.getTargetId().startsWith("#")) {
                     try {
                         Identifier loc = Identifier.parse(firstTask.getTargetId().substring(1));
                         TagKey<Item> tagKey = TagKey.create(Registries.ITEM, loc);
-                        // Pick the first item in the tag as the representative toast icon
+
                         toastIcon = BuiltInRegistries.ITEM.getTags()
                                 .filter(s -> s.key().equals(tagKey))
                                 .findFirst()
                                 .flatMap(s -> s.stream().findFirst())
                                 .map(h -> new ItemStack(h.value()))
                                 .orElse(new ItemStack(Items.BOOK));
-                    } catch (Exception ignored) {}
+                    } catch (Exception ignored) {
+                    }
                 } else {
                     toastIcon = firstTask.getIconStack();
                 }
             } else {
-                // If not using task icon, use the manually assigned logo
+
                 toastIcon = new ItemStack(q.getLogo());
             }
 
-            // Final check: If the icon is still empty or a barrier (failed parse), use a Book as a fallback
             if (toastIcon.isEmpty() || toastIcon.is(Items.BARRIER)) toastIcon = new ItemStack(Items.BOOK);
 
             PacketDistributor.sendToPlayer(player, new QuestCompletedPayload(q.getTitle(), toastIcon));
         }
 
-        // 2. Send Toasts for Chapters
         for (QuestChapter ch : results.chapters()) {
             PacketDistributor.sendToPlayer(player, new ChapterCompletedPayload(ch.getName(), new ItemStack(ch.getIcon())));
         }
 
-        // If any completions occurred, we MUST save the updated sets to the player's NBT
         if (!results.quests().isEmpty() || !results.chapters().isEmpty()) {
             player.setData(QuestAttachmentRegistry.PLAYER_PROGRESS, progress);
         }
 
-        // FIX: Always rebuild the cache here. Resets (which have empty results) change eligibility 
-        // just as much as completions do.
         rebuildActiveQuestCache(player);
 
-        // 3. Efficient Global Sync: Tell the client exactly what our NBT looks like
         QuestSyncHelper.syncPlayerProgress(player);
 
         return !results.quests().isEmpty() || !results.chapters().isEmpty();
     }
 
-    /**
-     * Helper to verify if all dependencies for a quest are met for a specific player.
-     */
     private static boolean isQuestUnlocked(Quest quest, PlayerQuestProgress progress) {
         for (String depId : quest.getDependencies()) {
             if (!progress.isQuestComplete(depId)) return false;
@@ -637,45 +574,39 @@ public class QuestServerEvents {
         context.enqueueWork(() -> {
             if (context.player() instanceof ServerPlayer player) {
                 PlayerQuestProgress progress = player.getData(QuestAttachmentRegistry.PLAYER_PROGRESS);
-                
-                // We need to find the reward and determine if it's a top-level reward or a sub-reward choice
+
                 for (Quest quest : QUEST_MANAGER.getAllQuests()) {
                     for (QuestReward reward : quest.getRewards()) {
                         QuestReward targetToGive = null;
                         QuestReward bundleToClaim = null;
 
-                        // 1. Check if the ID matches the top-level reward
                         if (reward.getId().equals(payload.rewardId())) {
                             targetToGive = reward;
                         } else {
-                            // 2. Check if the ID matches a choice inside this reward bundle
+
                             for (QuestReward sub : reward.getSubRewards()) {
                                 if (sub.getId().equals(payload.rewardId())) {
                                     targetToGive = sub;
-                                    bundleToClaim = reward; // If a sub-reward is picked, the parent bundle is finished
+                                    bundleToClaim = reward;
                                     break;
                                 }
                             }
                         }
 
                         if (targetToGive != null) {
-                            // Validation: Check if quest is complete and the reward (or its parent bundle) isn't claimed yet
+
                             boolean alreadyClaimed = bundleToClaim != null ? progress.isRewardClaimed(bundleToClaim.getId()) : progress.isRewardClaimed(targetToGive.getId());
 
                             if (progress.isQuestComplete(quest.getId()) && !alreadyClaimed) {
-                                // 3. Grant the reward (Item, XP, or Command)
+
                                 RewardGiver.giveReward(player, targetToGive);
 
-                                // 4. Mark IDs as claimed in NBT:
-                                // If a choice was made, mark the parent bundle as claimed.
-                                // Otherwise, mark the reward itself as claimed.
                                 if (bundleToClaim != null) {
                                     progress.claimReward(bundleToClaim.getId());
                                 } else {
                                     progress.claimReward(targetToGive.getId());
                                 }
 
-                                // --- REPEATABLE RESET LOGIC ---
                                 if (quest.isRepeatable()) {
                                     boolean allRewardsClaimed = quest.getRewards().stream()
                                             .allMatch(r -> progress.isRewardClaimed(r.getId()));
@@ -710,7 +641,8 @@ public class QuestServerEvents {
                     try {
                         byte[] data = Files.readAllBytes(imagePath);
                         PacketDistributor.sendToPlayer(player, new SyncImagePayload(payload.imageId(), data));
-                    } catch (Exception ignored) {}
+                    } catch (Exception ignored) {
+                    }
                 }
             }
         });

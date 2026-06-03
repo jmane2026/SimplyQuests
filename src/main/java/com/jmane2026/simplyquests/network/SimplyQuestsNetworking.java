@@ -19,7 +19,6 @@ public class SimplyQuestsNetworking {
                 ServerPayloadHandler::handleQuestLock
         );
 
-        // Register all Editor/Admin packets as playToServer (C2S)
         registrar.playToServer(
                 SaveChapterPayload.TYPE,
                 SaveChapterPayload.CODEC,
@@ -56,26 +55,25 @@ public class SimplyQuestsNetworking {
                 ServerPayloadHandler::handleDeleteCanvasText
         );
 
-        // --- Clientbound Packets (S2C) ---
-        // FIX: Using lambdas (p, c) -> Handler.method(p, c) instead of method references Class::method
-        // ensures the Dedicated Server never tries to load the client-only Handler class.
-
         registrar.playToClient(
                 SyncQuestTreePayload.TYPE,
                 SyncQuestTreePayload.CODEC,
-                isClient ? SimplyQuestsClientPacketHandler::handleSyncQuestTree : (p, c) -> {}
+                isClient ? SimplyQuestsClientPacketHandler::handleSyncQuestTree : (p, c) -> {
+                }
         );
 
         registrar.playToClient(
                 SyncOpStatusPayload.TYPE,
                 SyncOpStatusPayload.CODEC,
-                isClient ? SimplyQuestsClientPacketHandler::handleSyncOpStatus : (p, c) -> {}
+                isClient ? SimplyQuestsClientPacketHandler::handleSyncOpStatus : (p, c) -> {
+                }
         );
 
         registrar.playToClient(
                 SimpleErrorPayload.TYPE,
                 SimpleErrorPayload.STREAM_CODEC,
-                isClient ? SimplyQuestsClientPacketHandler::handleSimpleError : (p, c) -> {}
+                isClient ? SimplyQuestsClientPacketHandler::handleSimpleError : (p, c) -> {
+                }
         );
     }
 }

@@ -10,7 +10,6 @@ public class SidebarChapter implements SidebarEntry {
     private ItemStack iconStack;
     private QuestState state;
 
-    // --- NEW: PERSISTENT CAMERA STATE PER CHAPTER ---
     private double offsetX = 0.0;
     private double offsetY = 0.0;
     private double zoom = 1.0;
@@ -21,25 +20,59 @@ public class SidebarChapter implements SidebarEntry {
         this.state = QuestState.AVAILABLE;
     }
 
-    public String getId() { return id; }
-    public void setId(String id) { this.id = id; }
+    public String getId() {
+        return id;
+    }
 
-    public String getName() { return name; }
-    public void setName(String name) { this.name = name; }
+    public void setId(String id) {
+        this.id = id;
+    }
 
-    public ItemStack getIconStack() { return iconStack; }
-    public void setIconStack(ItemStack iconStack) { this.iconStack = iconStack; }
+    public String getName() {
+        return name;
+    }
 
-    public QuestState getState() { return state; }
-    public void setState(QuestState state) { this.state = state; }
+    public void setName(String name) {
+        this.name = name;
+    }
 
-    // --- GETTERS AND SETTERS FOR POSITION PERSISTENCE ---
-    public double getOffsetX() { return offsetX; }
-    public void setOffsetX(double offsetX) { this.offsetX = offsetX; }
+    public ItemStack getIconStack() {
+        return iconStack;
+    }
 
-    public double getOffsetY() { return offsetY; }
-    public void setOffsetY(double offsetY) { this.offsetY = offsetY; }
+    public void setIconStack(ItemStack iconStack) {
+        this.iconStack = iconStack;
+    }
 
-    public double getZoom() { return zoom; }
-    public void setZoom(double zoom) { this.zoom = zoom; }
+    public QuestState getState() {
+        return state;
+    }
+
+    public void setState(QuestState state) {
+        this.state = state;
+    }
+
+    public double getOffsetX() {
+        return offsetX;
+    }
+
+    public void setOffsetX(double offsetX) {
+        this.offsetX = offsetX;
+    }
+
+    public double getOffsetY() {
+        return offsetY;
+    }
+
+    public void setOffsetY(double offsetY) {
+        this.offsetY = offsetY;
+    }
+
+    public double getZoom() {
+        return zoom;
+    }
+
+    public void setZoom(double zoom) {
+        this.zoom = zoom;
+    }
 }

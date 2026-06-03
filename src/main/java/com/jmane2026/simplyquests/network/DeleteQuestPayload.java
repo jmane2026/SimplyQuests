@@ -11,5 +11,9 @@ public record DeleteQuestPayload(String questId, String chapterName) implements 
     public static final Type<DeleteQuestPayload> TYPE = new Type<>(Identifier.fromNamespaceAndPath(SimplyQuests.MODID, "delete_quest"));
     public static final StreamCodec<RegistryFriendlyByteBuf, DeleteQuestPayload> CODEC = StreamCodec.composite(
             ByteBufCodecs.STRING_UTF8, DeleteQuestPayload::questId, ByteBufCodecs.STRING_UTF8, DeleteQuestPayload::chapterName, DeleteQuestPayload::new);
-    @Override public Type<? extends CustomPacketPayload> type() { return TYPE; }
+
+    @Override
+    public Type<? extends CustomPacketPayload> type() {
+        return TYPE;
+    }
 }

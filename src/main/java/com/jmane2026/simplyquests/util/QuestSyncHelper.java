@@ -23,9 +23,6 @@ public class QuestSyncHelper {
         PacketDistributor.sendToPlayer(player, payload);
     }
 
-    /**
-     * Broadcasts a chapter update to every player on the server.
-     */
     public static void broadcastChapterUpdate(Identifier id, QuestChapter chapter) {
         PacketDistributor.sendToAllPlayers(new SyncChapterPayload(id, chapter));
     }

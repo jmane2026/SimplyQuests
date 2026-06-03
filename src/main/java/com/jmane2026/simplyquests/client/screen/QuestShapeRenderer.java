@@ -9,7 +9,6 @@ public class QuestShapeRenderer {
     public static void render(QuestShape shape, GuiGraphicsExtractor graphics, int x, int y, int size, int outerColor, int innerColor) {
         if (shape == null) return;
 
-        // Draw the outer border/frame
         graphics.blit(
                 RenderPipelines.GUI_TEXTURED,
                 shape.getTexture(),
@@ -20,7 +19,6 @@ public class QuestShapeRenderer {
                 outerColor
         );
 
-        // Draw the inner background
         int borderThickness = 2;
         int innerSize = size - (borderThickness * 2);
         int offset = borderThickness;

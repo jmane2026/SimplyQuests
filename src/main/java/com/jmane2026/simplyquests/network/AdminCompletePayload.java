@@ -11,8 +11,8 @@ import java.util.Optional;
 
 public record AdminCompletePayload(
         String questId,
-        Optional<String> taskId, // If present, target a task. If empty, target the whole quest.
-        boolean complete         // true = complete, false = reset
+        Optional<String> taskId,
+        boolean complete
 ) implements CustomPacketPayload {
 
     public static final Type<AdminCompletePayload> TYPE = new Type<>(Identifier.fromNamespaceAndPath(SimplyQuests.MODID, "admin_complete"));

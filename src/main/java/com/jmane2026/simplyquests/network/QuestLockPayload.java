@@ -11,5 +11,9 @@ public record QuestLockPayload(String questId, boolean lock) implements CustomPa
     public static final Type<QuestLockPayload> TYPE = new Type<>(Identifier.fromNamespaceAndPath(SimplyQuests.MODID, "quest_lock"));
     public static final StreamCodec<RegistryFriendlyByteBuf, QuestLockPayload> CODEC = StreamCodec.composite(
             ByteBufCodecs.STRING_UTF8, QuestLockPayload::questId, ByteBufCodecs.BOOL, QuestLockPayload::lock, QuestLockPayload::new);
-    @Override public Type<? extends CustomPacketPayload> type() { return TYPE; }
+
+    @Override
+    public Type<? extends CustomPacketPayload> type() {
+        return TYPE;
+    }
 }

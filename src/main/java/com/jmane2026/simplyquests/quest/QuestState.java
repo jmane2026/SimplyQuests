@@ -1,10 +1,10 @@
 package com.jmane2026.simplyquests.quest;
 
 public enum QuestState {
-    LOCKED(0xFF4A4A4A),       // Deep dark charcoal gray (Dependencies not met)
-    AVAILABLE(0xFFD3D3D3),    // Sleek, bright light gray (Ready to be worked on)
+    LOCKED(0xFF4A4A4A),
+    AVAILABLE(0xFFD3D3D3),
     PARTIAL(0xFF55FFFF),
-    COMPLETED(0xFF67C23A);    // Crisp progression green (Finished)
+    COMPLETED(0xFF67C23A);
 
     private final int color;
 

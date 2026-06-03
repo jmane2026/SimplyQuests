@@ -6,16 +6,17 @@ import net.neoforged.fml.loading.FMLPaths;
 import org.apache.commons.io.FileUtils;
 
 import java.io.File;
+import java.nio.charset.StandardCharsets;
 import java.util.HashMap;
 import java.util.Map;
-import java.nio.charset.StandardCharsets;
 
 public class QuestClientData {
     private static final Gson GSON = new GsonBuilder().setPrettyPrinting().create();
     private static final File FILE = FMLPaths.GAMEDIR.get().resolve("simplyquests_local.json").toFile();
     private static Data data = new Data();
 
-    public record ViewState(double x, double y, double zoom) {}
+    public record ViewState(double x, double y, double zoom) {
+    }
 
     static {
         load();
@@ -27,14 +28,16 @@ public class QuestClientData {
                 String json = FileUtils.readFileToString(FILE, StandardCharsets.UTF_8);
                 Data loaded = GSON.fromJson(json, Data.class);
                 if (loaded != null) data = loaded;
-            } catch (Exception ignored) {}
+            } catch (Exception ignored) {
+            }
         }
     }
 
     private static void save() {
         try {
             FileUtils.writeStringToFile(FILE, GSON.toJson(data), StandardCharsets.UTF_8);
-        } catch (Exception ignored) {}
+        } catch (Exception ignored) {
+        }
     }
 
     public static String getLastChapter() {
@@ -78,7 +81,6 @@ public class QuestClientData {
         ViewState newState = new ViewState(x, y, zoom);
         ViewState oldState = data.chapterViews.get(chapterId);
 
-        // Only trigger a disk save if the view actually moved/changed
         if (oldState == null || oldState.x != x || oldState.y != y || oldState.zoom != zoom) {
             data.chapterViews.put(chapterId, newState);
             save();
@@ -101,9 +103,7 @@ public class QuestClientData {
         String lastChapter = "";
         double zoom = 1.0;
         boolean editMode = false;
-        // Key: Chapter sanitized ID, Value: The specific camera position for that chapter
         Map<String, ViewState> chapterViews = new HashMap<>();
-        // Key: Group sanitized ID, Value: Expansion state
         Map<String, Boolean> expandedGroups = new HashMap<>();
     }
 }

@@ -11,5 +11,9 @@ public record SimpleErrorPayload(String message) implements CustomPacketPayload 
     public static final Type<SimpleErrorPayload> TYPE = new Type<>(Identifier.fromNamespaceAndPath(SimplyQuests.MODID, "simple_error"));
     public static final StreamCodec<RegistryFriendlyByteBuf, SimpleErrorPayload> STREAM_CODEC = StreamCodec.composite(
             ByteBufCodecs.STRING_UTF8, SimpleErrorPayload::message, SimpleErrorPayload::new);
-    @Override public Type<? extends CustomPacketPayload> type() { return TYPE; }
+
+    @Override
+    public Type<? extends CustomPacketPayload> type() {
+        return TYPE;
+    }
 }

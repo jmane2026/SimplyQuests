@@ -13,5 +13,9 @@ public record RequestImagePayload(String imageId) implements CustomPacketPayload
             ByteBufCodecs.STRING_UTF8, RequestImagePayload::imageId,
             RequestImagePayload::new
     );
-    @Override public Type<? extends CustomPacketPayload> type() { return TYPE; }
+
+    @Override
+    public Type<? extends CustomPacketPayload> type() {
+        return TYPE;
+    }
 }
