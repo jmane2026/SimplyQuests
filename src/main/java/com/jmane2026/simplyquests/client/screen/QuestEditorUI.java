@@ -174,7 +174,7 @@ public class QuestEditorUI {
                     QuestTask provider = quest.getTasks().stream()
                             .filter(t -> t.getIconStack().getItem() == quest.getLogo() || (t.getType() == QuestTask.TaskType.CHECKBOX && quest.getLogo() == Items.AIR))
                             .findFirst().orElse(null);
-                    itemName = (provider != null) ? "Task: " + provider.getTargetDisplayName() : "Task Icon";
+                    itemName = (provider != null) ? provider.getTargetDisplayName() : "Task Icon";
                 } else {
                     itemName = new ItemStack(quest.getLogo()).getHoverName().getString();
                 }
@@ -1318,13 +1318,8 @@ public class QuestEditorUI {
         if (font.width(text) <= maxWidth) {
             return text;
         }
-
-        String ellipsis = "...";
-        String result = text;
-        while (font.width(result + ellipsis) > maxWidth && result.length() > 0) {
-            result = result.substring(0, result.length() - 1);
-        }
-        return result + ellipsis;
+        
+        return font.plainSubstrByWidth(text, maxWidth - font.width("...")) + "...";
     }
 
     public void updateScrollOffset(int boxWidth) {

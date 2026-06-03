@@ -2295,15 +2295,19 @@ public class QuestScreen extends Screen {
                 return true;
             }
             if (this.isEditorOpen) {
-
-                if (editorUI.isTitleOpen) questToModify.setTitle(editorUI.searchQuery);
-                else if (editorUI.isSubTitleOpen) questToModify.setSubTitle(editorUI.searchQuery);
-                else if (editorUI.isDescriptionOpen) questToModify.setDescription(editorUI.searchQuery);
-
-                editorUI.closePicker();
-
-                saveChanges();
-                playClickSound();
+                if (editorUI.isTitleOpen) {
+                    questToModify.setTitle(editorUI.searchQuery);
+                    editorUI.closePicker();
+                } else if (editorUI.isSubTitleOpen) {
+                    questToModify.setSubTitle(editorUI.searchQuery);
+                    editorUI.closePicker();
+                } else if (editorUI.isDescriptionOpen) {
+                    questToModify.setDescription(editorUI.searchQuery);
+                    editorUI.closePicker();
+                } else {
+                    saveChanges();
+                    playClickSound();
+                }
                 return true;
             } else if (this.isTaskEditorOpen) {
                 if (editorUI.isQuantityOpen) {
