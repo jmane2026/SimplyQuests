@@ -1402,6 +1402,44 @@ public class QuestScreen extends Screen {
             }
         }
 
+        // --- PERMANENT SUBTLE COORDINATE DISPLAY ---
+        // FIX: Instead of checking isInputBlocked(), we explicitly check for modal editors.
+        // This allows the HUD to stay visible while dragging nodes, images, or text.
+        // Permanent Subtle Coordinate Display (Updated with Ghost Tracking)
+        if (!isModalOpen && !editorUI.isPickerOpen() && mouseX > (int)this.currentSidebarWidth) {
+            double worldMouseX = this.offsetX + ((mouseX - absoluteCenterX) / this.zoom);
+            double worldMouseY = this.offsetY + ((mouseY - absoluteCenterY) / this.zoom);
+
+            double displayX, displayY;
+
+            // If moving an object, show the snapped coordinates of the ghost element rather than the raw cursor
+            if (movingQuest != null) {
+                displayX = Math.round(worldMouseX / GRID_SNAP) * GRID_SNAP;
+                displayY = Math.round(worldMouseY / GRID_SNAP) * GRID_SNAP;
+            } else if (movingCanvasImage != null || movingCanvasText != null) {
+                displayX = Math.round((worldMouseX - dragOffsetX) / GRID_SNAP) * GRID_SNAP;
+                displayY = Math.round((worldMouseY - dragOffsetY) / GRID_SNAP) * GRID_SNAP;
+            } else {
+                displayX = worldMouseX;
+                displayY = worldMouseY;
+            }
+
+            double unitX = displayX / GRID_SNAP;
+            double unitY = -displayY / GRID_SNAP;
+            // FIX: Prevent negative zero (-0.0) from appearing when exactly on the Y axis
+            if (unitY == 0.0) unitY = 0.0;
+
+            String coords = String.format("§7[ %.1f, %.1f ]", unitX, unitY);
+            float subScale = 0.7f; // Smaller text
+
+            graphics.pose().pushMatrix();
+            // Position in the bottom right corner with a small 5px margin
+            graphics.pose().translate(this.width - (font.width(coords) * subScale) - 5, this.height - (font.lineHeight * subScale) - 5);
+            graphics.pose().scale(subScale, subScale);
+            graphics.text(font, coords, 0, 0, 0x88FFFFFF, false);
+            graphics.pose().popMatrix();
+        }
+
         if (hoveringClaimAll) {
             renderSimpleTooltip(graphics, "Claim All", mouseX, mouseY);
         }
