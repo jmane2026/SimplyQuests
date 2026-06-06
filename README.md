@@ -5,10 +5,12 @@ This mod requires NeoForge version 26.1.0.19-beta or higher!
 To install, place the Simply Quests v0.1.0.jar file directly into your mods folder.
 
 I can add any Quests or anything:
+
 Make sure that you are in a world that has Commands enabled and that you have enabled edit mode by type:
 /simplyquests enableEditMode true
 
 I still can't add anything!
+
 At the very start, there are no chapters or groups in the side bar.
 You cannot add any quests without having a chapter open to add quests to. Create a new Chapter, then you can start adding quests!
 
