@@ -1430,7 +1430,7 @@ public class QuestEditorUI {
 
             StringBuilder sb = new StringBuilder();
             line.accept((index, style, codePoint) -> {
-                sb.append((char) codePoint);
+                sb.appendCodePoint(codePoint);
                 return true;
             });
             lineStr = sb.toString();
@@ -1604,7 +1604,7 @@ public class QuestEditorUI {
         for (var line : wrappedLines) {
             StringBuilder sb = new StringBuilder();
             line.accept((idx, style, cp) -> {
-                sb.append((char) cp);
+                sb.appendCodePoint(cp);
                 return true;
             });
             String s = sb.toString();

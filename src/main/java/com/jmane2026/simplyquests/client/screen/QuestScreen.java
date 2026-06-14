@@ -2257,10 +2257,13 @@ public class QuestScreen extends Screen {
                 stopSidebarEditing(false);
                 return true;
             } else if (event.key() == GLFW.GLFW_KEY_BACKSPACE && !sidebarSearchQuery.isEmpty()) {
-                sidebarSearchQuery = sidebarSearchQuery.substring(0, sidebarSearchQuery.length() - 1);
+                int cp = sidebarSearchQuery.codePointBefore(sidebarSearchQuery.length());
+                sidebarSearchQuery = sidebarSearchQuery.substring(0, sidebarSearchQuery.length() - Character.charCount(cp));
+                return true;
             } else if (event.key() == GLFW.GLFW_KEY_BACKSPACE) {
                 if (!sidebarSearchQuery.isEmpty()) {
-                    sidebarSearchQuery = sidebarSearchQuery.substring(0, sidebarSearchQuery.length() - 1);
+                    int cp = sidebarSearchQuery.codePointBefore(sidebarSearchQuery.length());
+                    sidebarSearchQuery = sidebarSearchQuery.substring(0, sidebarSearchQuery.length() - Character.charCount(cp));
                 }
                 return true;
             }
@@ -2433,8 +2436,16 @@ public class QuestScreen extends Screen {
             }
         }
 
-        if (editorUI.isPickerOpen() || isTextEditorOpen || editorUI.isHexEditing || editorUI.isSubTitleOpen || editorUI.isDescriptionOpen || editorUI.isQuantityOpen || editorUI.isXOpen || editorUI.isYOpen || editorUI.isZOpen) {
-            if (event.key() == GLFW.GLFW_KEY_A && (event.modifiers() & GLFW.GLFW_MOD_CONTROL) != 0) {
+        boolean isTyping = editorUI.isPickerOpen() || isTextEditorOpen || editorUI.isHexEditing || 
+                           editorUI.isSubTitleOpen || editorUI.isDescriptionOpen || 
+                           editorUI.isQuantityOpen || editorUI.isXOpen || 
+                           editorUI.isYOpen || editorUI.isZOpen || isSidebarEditing();
+
+        if (isTyping) {
+            // Allow Escape to close the current sub-editor/picker
+            if (key == GLFW.GLFW_KEY_ESCAPE) {
+                // Let existing ESC logic handle it below
+            } else if (event.key() == GLFW.GLFW_KEY_A && (event.modifiers() & GLFW.GLFW_MOD_CONTROL) != 0) {
                 if (editorUI.isHexEditing) {
                     editorUI.selectionStart = 0;
                     editorUI.selectionEnd = editorUI.hexQuery.length();
@@ -2457,8 +2468,10 @@ public class QuestScreen extends Screen {
                         editorUI.selectionStart = -1;
                         editorUI.selectionEnd = -1;
                     } else if (editorUI.hexCursorIndex > 0) {
-                        editorUI.hexQuery = editorUI.hexQuery.substring(0, editorUI.hexCursorIndex - 1) + editorUI.hexQuery.substring(editorUI.hexCursorIndex);
-                        editorUI.hexCursorIndex--;
+                    int cp = editorUI.hexQuery.codePointBefore(editorUI.hexCursorIndex);
+                    int charCount = Character.charCount(cp);
+                    editorUI.hexQuery = editorUI.hexQuery.substring(0, editorUI.hexCursorIndex - charCount) + editorUI.hexQuery.substring(editorUI.hexCursorIndex);
+                    editorUI.hexCursorIndex -= charCount;
                     }
                     applyHexToCurrentTarget();
                 } else if (key == GLFW.GLFW_KEY_LEFT && editorUI.hexCursorIndex > 0) {
@@ -2536,14 +2549,19 @@ public class QuestScreen extends Screen {
                     editorUI.selectionStart = -1;
                     editorUI.selectionEnd = -1;
                 } else if (editorUI.cursorIndex > 0) {
-
                     String query = editorUI.searchQuery;
-                    editorUI.searchQuery = query.substring(0, editorUI.cursorIndex - 1) + query.substring(editorUI.cursorIndex);
-                    editorUI.cursorIndex--;
+                    int cp = query.codePointBefore(editorUI.cursorIndex);
+                    int charCount = Character.charCount(cp);
+                    editorUI.searchQuery = query.substring(0, editorUI.cursorIndex - charCount) + query.substring(editorUI.cursorIndex);
+                    editorUI.cursorIndex -= charCount;
                 }
                 return true;
             }
-            return true;
+            
+            // If we are typing, consume all keys except ESC/ENTER so they don't trigger global hotkeys (like 'E' or 'O')
+            if (key != GLFW.GLFW_KEY_ESCAPE && key != GLFW.GLFW_KEY_ENTER && key != GLFW.GLFW_KEY_KP_ENTER) {
+                return true;
+            }
         }
 
         if (ClientQuestEvents.OPEN_QUEST_KEY.matches(event) || key == GLFW.GLFW_KEY_E) {
@@ -4063,15 +4081,14 @@ public class QuestScreen extends Screen {
             end = Math.max(0, Math.min(end, editorUI.searchQuery.length()));
 
             editorUI.searchQuery = editorUI.searchQuery.substring(0, start) + newChar + editorUI.searchQuery.substring(end);
-            editorUI.cursorIndex = start + 1;
+            editorUI.cursorIndex = start + newChar.length();
             editorUI.selectionStart = -1;
             editorUI.selectionEnd = -1;
         } else {
-
             if (editorUI.cursorIndex > editorUI.searchQuery.length())
                 editorUI.cursorIndex = editorUI.searchQuery.length();
             editorUI.searchQuery = editorUI.searchQuery.substring(0, editorUI.cursorIndex) + newChar + editorUI.searchQuery.substring(editorUI.cursorIndex);
-            editorUI.cursorIndex++;
+            editorUI.cursorIndex += newChar.length();
         }
     }
 
