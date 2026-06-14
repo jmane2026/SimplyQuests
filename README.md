@@ -4,13 +4,18 @@ This mod requires NeoForge version 26.1.0.19-beta or higher!
 
 To install, place the Simply Quests v0.1.0.jar file directly into your mods folder.
 
-I can add any Quests or anything:
+
+I can't add any Quests or anything:
+
 Make sure that you are in a world that has Commands enabled and that you have enabled edit mode by type:
 /simplyquests enableEditMode true
 
+
 I still can't add anything!
+
 At the very start, there are no chapters or groups in the side bar.
 You cannot add any quests without having a chapter open to add quests to. Create a new Chapter, then you can start adding quests!
+
 
 Controls:
 
@@ -21,6 +26,7 @@ Quest Nodes, Tasks, Rewards, Chapters, Groups, Images, Text, can all be moved by
 This will show a shadow of the object that follows your mouse around. When you Left click to place the object, the original item will then move to that location.
 
 Creating a Group/Chapter
+
 When edit mode is enabled, if you bring up the Side Bar, you can see a + button at the top right corner of the Side Bar. This allows you to create Groups or Standalone Chapters.
 When there is an existing Group, there will be + buttons to the right of each Group to add Chapters directly into the Group.
 
