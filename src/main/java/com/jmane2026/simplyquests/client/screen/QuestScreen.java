@@ -4094,7 +4094,7 @@ public class QuestScreen extends Screen {
 
     public static void renderStaticOverlayFromUI(GuiGraphicsExtractor graphics, String text, int x, int y, int maxWidth) {
         Minecraft.getInstance().execute(() -> {
-            if (Minecraft.getInstance().screen instanceof QuestScreen screen) {
+            if (Minecraft.getInstance().gui.screen() instanceof QuestScreen screen) {
                 screen.renderStaticTextOverlay(graphics, text, x, y, maxWidth);
             }
         });
@@ -5024,7 +5024,7 @@ public class QuestScreen extends Screen {
         boolean foundClaimable = false;
         boolean foundUnclaimed = false;
 
-        if (mc.screen instanceof QuestScreen screen && screen.allQuests != null && !screen.allQuests.isEmpty()) {
+        if (mc.gui.screen() instanceof QuestScreen screen && screen.allQuests != null && !screen.allQuests.isEmpty()) {
             questsToProcess = screen.allQuests;
         } else {
 

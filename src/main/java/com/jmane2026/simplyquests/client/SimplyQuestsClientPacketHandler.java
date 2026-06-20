@@ -43,7 +43,7 @@ public class SimplyQuestsClientPacketHandler {
     public static void handleQuestCompleted(final QuestCompletedPayload payload, final IPayloadContext context) {
         context.enqueueWork(() -> {
             Minecraft mc = Minecraft.getInstance();
-            mc.getToastManager().addToast(new QuestToast(payload.title(), payload.icon()));
+            mc.gui.toastManager().addToast(new QuestToast(payload.title(), payload.icon()));
             mc.getSoundManager().play(SimpleSoundInstance.forUI(SoundEvents.UI_TOAST_IN, 1.0F));
         });
     }
@@ -51,7 +51,7 @@ public class SimplyQuestsClientPacketHandler {
     public static void handleChapterCompleted(final ChapterCompletedPayload payload, final IPayloadContext context) {
         context.enqueueWork(() -> {
             Minecraft mc = Minecraft.getInstance();
-            mc.getToastManager().addToast(new ChapterToast(payload.icon()));
+            mc.gui.toastManager().addToast(new ChapterToast(payload.icon()));
             mc.getSoundManager().play(SimpleSoundInstance.forUI(SoundEvents.UI_TOAST_CHALLENGE_COMPLETE, 1.0F));
         });
     }
@@ -64,7 +64,7 @@ public class SimplyQuestsClientPacketHandler {
             manager.setChaptersFromList(payload.chapters());
             manager.setGroups(payload.groups());
 
-            if (Minecraft.getInstance().screen instanceof QuestScreen screen) {
+            if (Minecraft.getInstance().gui.screen() instanceof QuestScreen screen) {
                 screen.allQuests.clear();
                 screen.questLookup.clear();
                 for (QuestChapter newChapter : payload.chapters()) {
@@ -150,7 +150,7 @@ public class SimplyQuestsClientPacketHandler {
                 QuestClientData.setEditModeEnabled(payload.editModeEnabled());
             }
 
-            if (Minecraft.getInstance().screen instanceof QuestScreen screen) {
+            if (Minecraft.getInstance().gui.screen() instanceof QuestScreen screen) {
                 screen.init();
             }
         });
@@ -159,7 +159,7 @@ public class SimplyQuestsClientPacketHandler {
     public static void handleSyncProgress(SyncQuestProgressPayload payload, IPayloadContext context) {
         context.enqueueWork(() -> {
             CLIENT_TASK_PROGRESS.put(payload.taskId(), payload.currentAmount());
-            if (Minecraft.getInstance().screen instanceof QuestScreen screen) {
+            if (Minecraft.getInstance().gui.screen() instanceof QuestScreen screen) {
                 screen.refreshTaskProgress(payload.questId(), payload.taskId(), payload.currentAmount(), payload.state());
             }
         });
@@ -176,7 +176,7 @@ public class SimplyQuestsClientPacketHandler {
 
             QuestScreen.updateClaimableCache();
 
-            if (Minecraft.getInstance().screen instanceof QuestScreen screen) {
+            if (Minecraft.getInstance().gui.screen() instanceof QuestScreen screen) {
                 screen.refreshGlobalProgress();
             }
         });

@@ -39,7 +39,7 @@ public class InventoryQuestButtonHandler {
 
             event.addListener(new QuestBookButton(x, y, b -> {
                 QuestScreen.playClickSound();
-                Minecraft.getInstance().setScreen(new QuestScreen());
+                Minecraft.getInstance().gui.setScreen(new QuestScreen());
             }));
         }
     }

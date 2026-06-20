@@ -34,9 +34,9 @@ public class ClientQuestEvents {
         if (event.getEntity().level().isClientSide()) {
             Minecraft mc = Minecraft.getInstance();
 
-            if (mc.level != null && mc.screen == null) {
+            if (mc.level != null && mc.gui.screen() == null) {
                 if (OPEN_QUEST_KEY.consumeClick()) {
-                    mc.setScreen(new QuestScreen());
+                    mc.gui.setScreen(new QuestScreen());
                 }
             }
         }
